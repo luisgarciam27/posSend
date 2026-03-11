@@ -1,20 +1,57 @@
 // api/send.js
 // POST /api/send
-// Descarga el PDF del comprobante desde Odoo y lo envía
-// a n8n para que dispare Evolution API → WhatsApp.
-//
-// FIX 1: Usa node-fetch explícito para compatibilidad con Node 16/18
-// FIX 2: Prueba múltiples nombres de reporte POS (compatibilidad Odoo 14/15/16/17)
-// FIX 3: Payload limpio y consistente con lo que n8n espera
+// Descarga el PDF del comprobante desde Odoo 14 y lo envía a n8n → Evolution API → WhatsApp.
 
-const { execute, cors, readBody, makeClient, call } = require('./_odoo');
+const { cors, readBody } = require('./_odoo');
 
 // Compatibilidad Node 16 (sin fetch global) y Node 18+
 let fetchFn;
-try {
-  fetchFn = globalThis.fetch || require('node-fetch');
-} catch {
-  fetchFn = require('node-fetch');
+try { fetchFn = globalThis.fetch ?? require('node-fetch'); }
+catch { fetchFn = require('node-fetch'); }
+
+// Nombres de reporte por versión — Odoo 14 primero
+const INVOICE_REPORTS = [
+  'account.report_invoice_with_payments', // Odoo 14 ← correcto
+  'account.report_invoice',               // Odoo 14 alternativo
+  'account.account_invoices',             // Odoo 15+
+];
+
+const POS_REPORTS = [
+  'point_of_sale.report_pos_order',         // Odoo 14 ← correcto
+  'point_of_sale.receipt_report',           // Odoo 14 alternativo
+  'point_of_sale.pos_invoice_report',       // Odoo 15
+  'point_of_sale.report_pos_order_receipt', // Odoo 16/17
+];
+
+async function tryRenderPDF(url, db, uid, password, reportNames, recordId) {
+  const parsed  = new URL(url);
+  const isHttps = parsed.protocol === 'https:';
+  const xmlrpc  = require('xmlrpc');
+  const client  = isHttps
+    ? xmlrpc.createSecureClient({ host: parsed.hostname, port: parseInt(parsed.port || 443), path: '/xmlrpc/2/object' })
+    : xmlrpc.createClient({ host: parsed.hostname, port: parseInt(parsed.port || 80), path: '/xmlrpc/2/object' });
+
+  for (const reportName of reportNames) {
+    try {
+      console.log(`[send] Intentando: ${reportName} id:${recordId}`);
+      const result = await new Promise((resolve, reject) => {
+        client.methodCall('execute_kw', [
+          db, uid, password,
+          'ir.actions.report', 'render_qweb_pdf',
+          [[reportName, [recordId]]],
+          {}
+        ], (err, res) => err ? reject(err) : resolve(res));
+      });
+      const bytes = result?.[0];
+      if (!bytes) throw new Error('PDF vacío');
+      const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'base64');
+      console.log(`[send] ✅ PDF OK: ${reportName} — ${buffer.length} bytes`);
+      return buffer;
+    } catch (e) {
+      console.warn(`[send] ❌ ${reportName}:`, e.message);
+    }
+  }
+  return null;
 }
 
 module.exports = async (req, res) => {
@@ -25,135 +62,73 @@ module.exports = async (req, res) => {
   try {
     const {
       uid, password,
-      order_id, order_number,
+      order_id, order_number, invoice_id,
       client_name, client_phone,
-      total, currency,
-      vendor_name, company_id,
-      message,
-      invoice_id,
+      total, currency, vendor_name, company_id, message,
     } = await readBody(req);
 
     const url    = process.env.ODOO_URL;
     const db     = process.env.ODOO_DB;
     const n8nUrl = process.env.N8N_WEBHOOK_URL;
+    const n8nTok = process.env.N8N_SECRET_TOKEN;
 
-    if (!url || !db)   return res.status(500).json({ error: 'Odoo no configurado' });
-    if (!n8nUrl)       return res.status(500).json({ error: 'N8N_WEBHOOK_URL no configurado' });
-    if (!client_phone) return res.status(400).json({ error: 'Sin número de teléfono del cliente' });
+    if (!url || !db)       return res.status(500).json({ error: 'Odoo no configurado' });
+    if (!n8nUrl)           return res.status(500).json({ error: 'N8N_WEBHOOK_URL no configurado' });
+    if (!client_phone)     return res.status(400).json({ error: 'Sin número de teléfono del cliente' });
+    if (!uid || !password) return res.status(401).json({ error: 'uid y password requeridos' });
 
-    // ── 1. Intentar descargar PDF ────────────────────────────────────────
-    let pdfBase64  = null;
-    let pdfFilename = `${order_number || order_id}.pdf`;
+    // 1. PDF de factura (account.move) — Odoo 14
+    let pdfBuffer   = null;
+    let pdfFilename = `${String(order_number || order_id).replace(/\//g, '-')}.pdf`;
 
-    // FIX 2: Lista de nombres de reporte POS según versión de Odoo
-    const posReportNames = [
-      'point_of_sale.report_pos_order',   // Odoo 16/17
-      'point_of_sale.pos_invoice_report',  // Odoo 15
-      'point_of_sale.report_pos_receipt',  // algunos módulos custom
-    ];
-
-    // Intentar primero con la factura vinculada (account.move)
     if (invoice_id) {
-      try {
-        const models = makeClient(url, '/xmlrpc/2/object');
-        const result = await call(models, 'execute_kw', [
-          db, uid, password,
-          'ir.actions.report', 'render_qweb_pdf',
-          [['account.report_invoice', [invoice_id]]],
-          {}
-        ]);
-        const bytes = result?.[0];
-        if (bytes) {
-          pdfBase64  = Buffer.isBuffer(bytes) ? bytes.toString('base64') : bytes;
-          pdfFilename = `${String(order_number).replace(/\//g, '-')}.pdf`;
-          console.log('[send] PDF de factura OK, invoice_id:', invoice_id);
-        }
-      } catch (e) {
-        console.warn('[send] PDF factura falló:', e.message);
-      }
+      console.log('[send] PDF factura invoice_id:', invoice_id);
+      pdfBuffer = await tryRenderPDF(url, db, uid, password, INVOICE_REPORTS, invoice_id);
     }
 
-    // Si no hay PDF de factura, intentar con reportes POS
-    if (!pdfBase64 && order_id) {
-      const models = makeClient(url, '/xmlrpc/2/object');
-
-      for (const reportName of posReportNames) {
-        try {
-          const result = await call(models, 'execute_kw', [
-            db, uid, password,
-            'ir.actions.report', 'render_qweb_pdf',
-            [[reportName, [order_id]]],
-            {}
-          ]);
-          const bytes = result?.[0];
-          if (bytes) {
-            pdfBase64   = Buffer.isBuffer(bytes) ? bytes.toString('base64') : bytes;
-            pdfFilename  = `Recibo_${String(order_number || order_id).replace(/\//g, '-')}.pdf`;
-            console.log('[send] PDF POS OK con reporte:', reportName);
-            break; // Salir del loop al primer éxito
-          }
-        } catch (e) {
-          console.warn(`[send] Reporte ${reportName} falló:`, e.message);
-        }
-      }
+    // 2. Fallback: recibo POS
+    if (!pdfBuffer && order_id) {
+      console.log('[send] PDF recibo POS order_id:', order_id);
+      pdfBuffer = await tryRenderPDF(url, db, uid, password, POS_REPORTS, order_id);
+      if (pdfBuffer) pdfFilename = `Recibo_${String(order_number || order_id).replace(/\//g, '-')}.pdf`;
     }
 
-    if (!pdfBase64) {
-      console.warn('[send] No se pudo generar PDF — se enviará solo texto');
-    }
+    const pdfBase64 = pdfBuffer ? pdfBuffer.toString('base64') : '';
+    if (!pdfBase64) console.warn('[send] ⚠️ Sin PDF — se enviará solo texto');
 
-    // ── 2. Construir mensaje ─────────────────────────────────────────────
-    const finalMessage = message || buildDefaultMsg({
-      order_number, client_name, total, currency
-    });
-
-    // ── 3. Payload para n8n ──────────────────────────────────────────────
-    // Campos exactos que n8n espera en "Extraer datos del payload"
+    // 3. Payload para n8n
     const payload = {
       action:       'send_whatsapp',
       order_number: order_number || String(order_id),
       client_name:  client_name  || 'Cliente',
-      client_phone: String(client_phone).replace(/\D/g, ''), // solo dígitos
-      total:        String(Number(total).toFixed(2)),
+      client_phone: String(client_phone).replace(/\D/g, ''),
+      total:        String(Number(total || 0).toFixed(2)),
       currency:     currency || 'PEN',
       vendor_name:  vendor_name || '',
       company_id:   company_id  || '',
-      message:      finalMessage,
-      // PDF: null explícito si no hay → n8n evalúa != "" como false y toma rama texto
-      pdf_base64:   pdfBase64   || '',
-      pdf_filename: pdfBase64   ? pdfFilename : '',
+      message:      message || buildDefaultMsg({ order_number, client_name, total, currency }),
+      pdf_base64:   pdfBase64,
+      pdf_filename: pdfBase64 ? pdfFilename : '',
     };
 
-    console.log('[send] Enviando a n8n:', {
-      phone: payload.client_phone,
-      order: payload.order_number,
-      hasPdf: !!pdfBase64,
-      n8nUrl,
-    });
+    console.log('[send] → n8n:', { phone: payload.client_phone, order: payload.order_number, hasPdf: !!pdfBase64, bytes: pdfBuffer?.length || 0 });
 
-    // ── 4. POST al webhook de n8n ────────────────────────────────────────
+    // 4. POST a n8n
     const n8nRes = await fetchFn(n8nUrl, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(n8nTok ? { 'X-Token': n8nTok } : {}) },
       body:    JSON.stringify(payload),
     });
 
     const responseText = await n8nRes.text();
-    console.log('[send] n8n status:', n8nRes.status, 'body:', responseText.slice(0, 200));
+    console.log('[send] n8n status:', n8nRes.status, '|', responseText.slice(0, 300));
 
-    if (!n8nRes.ok) {
-      throw new Error(`n8n respondió ${n8nRes.status}: ${responseText}`);
-    }
+    if (!n8nRes.ok) throw new Error(`n8n respondió ${n8nRes.status}: ${responseText}`);
 
     let n8nData;
-    try { n8nData = JSON.parse(responseText); }
-    catch { n8nData = { raw: responseText }; }
+    try { n8nData = JSON.parse(responseText); } catch { n8nData = { raw: responseText }; }
 
-    return res.status(200).json({
-      ok:       true,
-      pdf_sent: !!pdfBase64,
-      n8n:      n8nData,
-    });
+    return res.status(200).json({ ok: true, pdf_sent: !!pdfBase64, pdf_size: pdfBuffer?.length || 0, n8n: n8nData });
 
   } catch (err) {
     console.error('[send] fatal:', err);
