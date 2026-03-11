@@ -802,37 +802,48 @@ td { padding: 16px 20px; vertical-align: middle; font-size: 14px; }
       <!-- EMPRESAS & POS -->
       <div class="admin-section" id="sec_empresas">
         <div class="admin-section-title">Empresas & Puntos de Venta</div>
-        <div class="admin-section-sub">Define qué empresa y POS verá cada vendedor. Si no configuras nada, la app detectará automáticamente desde Odoo.</div>
+        <div class="admin-section-sub">Selecciona la empresa y los POS que podrán usar los vendedores. Los datos se cargan directo desde Odoo.</div>
 
-        <div class="admin-card">
-          <div class="admin-card-title">Empresa activa</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="admin-field">
-              <label>ID Empresa Odoo</label>
-              <input id="cfg_company_id" type="number" placeholder="1"/>
-              <div class="hint">res.company → id</div>
+        <!-- Paso 1: cargar desde Odoo -->
+        <div class="admin-card" id="card_load_empresas">
+          <div class="admin-card-title">1 — Cargar desde Odoo</div>
+          <p style="font-size:13px;color:#8b949e;margin-bottom:16px">Usa las credenciales admin para traer las empresas y puntos de venta disponibles en tu Odoo.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+            <div class="admin-field" style="margin:0">
+              <label>Email admin</label>
+              <input id="emp_user" type="email" placeholder="soporte@empresa.com"/>
             </div>
-            <div class="admin-field">
-              <label>Nombre (display)</label>
-              <input id="cfg_company_name" type="text" placeholder="Mi Empresa SAC"/>
+            <div class="admin-field" style="margin:0">
+              <label>API Key Odoo</label>
+              <input id="emp_key" type="password" placeholder="tu_api_key"/>
             </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button class="admin-btn abn-blue" onclick="loadEmpresasFromOdoo()">⬇ Cargar empresas y POS</button>
+            <span id="empLoadStatus" style="font-family:var(--mono);font-size:11px;color:#8b949e"></span>
           </div>
         </div>
 
-        <div class="admin-card">
-          <div class="admin-card-title">Puntos de venta habilitados</div>
-          <table class="config-table" id="posTable">
-            <thead><tr><th>ID POS</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="posBody">
-              <tr><td colspan="4" style="color:#484f58;font-family:var(--mono);font-size:12px;padding:16px">Sin POS configurados</td></tr>
-            </tbody>
-          </table>
-          <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
-            <input id="newPosId" type="number" placeholder="ID POS" style="width:80px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e2e8f0;font-family:var(--mono);font-size:13px;padding:7px 10px;outline:none"/>
-            <input id="newPosName" type="text" placeholder="Nombre del POS" style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e2e8f0;font-family:var(--mono);font-size:13px;padding:7px 10px;outline:none"/>
-            <button class="admin-btn abn-primary" onclick="addPOS()">+ Agregar</button>
-            <button class="admin-btn abn-blue" onclick="saveEmpresasConfig()">💾 Guardar todo</button>
+        <!-- Paso 2: selector visual -->
+        <div class="admin-card" id="card_select_empresas" style="display:none">
+          <div class="admin-card-title">2 — Selecciona empresa activa</div>
+          <div id="companySelector" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px"></div>
+
+          <div class="admin-card-title" style="margin-top:16px">3 — Selecciona puntos de venta habilitados</div>
+          <p style="font-size:12px;color:#8b949e;margin-bottom:12px">Marca los POS que usarán tus vendedores.</p>
+          <div id="posSelector" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px"></div>
+
+          <div style="display:flex;gap:10px">
+            <button class="admin-btn abn-primary" onclick="saveEmpresasConfig()">💾 Guardar selección</button>
+            <button class="admin-btn abn-ghost" onclick="loadEmpresasFromOdoo()">↺ Recargar</button>
           </div>
+        </div>
+
+        <!-- Configuración guardada -->
+        <div class="admin-card" id="card_empresas_saved" style="display:none">
+          <div class="admin-card-title">✓ Configuración activa</div>
+          <div id="empresasSavedInfo" style="font-size:13px;color:#8b949e;line-height:1.8"></div>
+          <button class="admin-btn abn-ghost" style="margin-top:14px" onclick="editEmpresasConfig()">✏ Editar</button>
         </div>
       </div>
 
@@ -1249,11 +1260,17 @@ function checkGate() {
 function loadAdminCfg() {
   const cfg = loadCfg();
   ['url','db','user','key'].forEach(k => { const el=document.getElementById('cfg_'+k); if(el&&cfg['odoo_'+k]) el.value=cfg['odoo_'+k]; });
-  if(cfg.n8n_url) document.getElementById('cfg_n8n').value = cfg.n8n_url;
-  if(cfg.n8n_secret) document.getElementById('cfg_n8n_secret').value = cfg.n8n_secret;
-  if(cfg.company_id) document.getElementById('cfg_company_id').value = cfg.company_id;
-  if(cfg.company_name) document.getElementById('cfg_company_name').value = cfg.company_name;
-  renderPOSTable(cfg.pos_list||[]);
+  if(cfg.odoo_user) document.getElementById('emp_user').value = cfg.odoo_user;
+  if(cfg.odoo_key)  document.getElementById('emp_key').value  = cfg.odoo_key;
+  // Mostrar config guardada de empresa si existe
+  if(cfg.company_id && cfg.pos_list?.length) {
+    _selectedCompanyId = cfg.company_id;
+    cfg.pos_list.forEach(p => _selectedPosIds.add(p.id));
+    document.getElementById('card_empresas_saved').style.display='block';
+    document.getElementById('empresasSavedInfo').innerHTML =
+      `🏢 <strong style="color:#e2e8f0">${esc(cfg.company_name||'')}</strong><br>` +
+      cfg.pos_list.map(p=>`🖥️ ${esc(p.name)} <span style="color:#484f58">(ID: ${p.id})</span>`).join('<br>');
+  }
   renderAdminLogs();
 }
 
@@ -1272,18 +1289,21 @@ function saveOdooConfig() {
 async function testOdoo() {
   const st = document.getElementById('odooConnStatus');
   st.className='conn-status cs-wait'; st.textContent='◌ Probando...';
-  const cfg = loadCfg();
-  if(!cfg.n8n_url){ st.className='conn-status cs-err'; st.textContent='✗ Configura el webhook primero'; return; }
   try {
     const r = await fetch('/api/test', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
     const d = await r.json();
     if(d.odoo_ok) {
-      st.className='conn-status cs-ok'; st.textContent='✓ Conectado — Odoo '+( d.odoo_version||'');
+      st.className='conn-status cs-ok'; st.textContent='✓ Conectado — Odoo '+(d.odoo_version||'');
       document.getElementById('connTable').innerHTML = `
         <tr><td style="color:#8b949e">ODOO_URL</td><td style="font-family:var(--mono);font-size:12px;color:#e2e8f0">${esc(d.odoo_url||'—')}</td><td><span class="online-dot dot-green"></span>OK</td></tr>
         <tr><td style="color:#8b949e">ODOO_DB</td><td style="font-family:var(--mono);font-size:12px;color:#e2e8f0">${esc(d.odoo_db||'—')}</td><td><span class="online-dot dot-green"></span>OK</td></tr>
         <tr><td style="color:#8b949e">Versión Odoo</td><td style="font-family:var(--mono);font-size:12px;color:#e2e8f0">${d.odoo_version||'—'}</td><td><span class="online-dot dot-green"></span>OK</td></tr>`;
-    } else { throw new Error(JSON.stringify(d)); }
+      toast('✅ Conexión verificada','ok');
+    } else {
+      st.className='conn-status cs-err';
+      st.textContent='✗ Variables de entorno no configuradas en Vercel';
+      toast('Falta configurar env vars en Vercel','err');
+    }
   } catch(e) { st.className='conn-status cs-err'; st.textContent='✗ '+e.message; }
 }
 
@@ -1308,32 +1328,134 @@ async function testWebhook() {
   } catch(e){ st.className='conn-status cs-err'; st.textContent='✗ '+e.message; }
 }
 
-// POS list
-let _posList = [];
-function renderPOSTable(list) {
-  _posList = [...list];
-  const tbody = document.getElementById('posBody');
-  if(!list.length){ tbody.innerHTML=`<tr><td colspan="4" style="color:#484f58;font-family:var(--mono);font-size:12px;padding:16px">Sin POS configurados</td></tr>`; return; }
-  tbody.innerHTML = list.map((p,i)=>`
-    <tr>
-      <td style="font-family:var(--mono);font-size:12px;color:#58a6ff">${p.id}</td>
-      <td style="color:#e2e8f0">${esc(p.name)}</td>
-      <td><span class="online-dot dot-green"></span><span style="font-size:12px;color:#2ea043">Activo</span></td>
-      <td><button class="admin-btn abn-danger" onclick="removePOS(${i})">✕</button></td>
-    </tr>`).join('');
+// ── EMPRESAS & POS desde Odoo ──────────────────────────
+let _odooCompanies = []; // datos cargados desde Odoo
+let _selectedCompanyId = null;
+let _selectedPosIds = new Set();
+
+async function loadEmpresasFromOdoo() {
+  const user = document.getElementById('emp_user').value.trim() || loadCfg().odoo_user;
+  const key  = document.getElementById('emp_key').value.trim()  || loadCfg().odoo_key;
+  const st   = document.getElementById('empLoadStatus');
+  if(!user || !key){ toast('Ingresa email y API Key Odoo','err'); return; }
+
+  st.style.color='#f79600'; st.textContent='Cargando desde Odoo...';
+  try {
+    const r = await fetch('/api/config', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username:user, api_key:key })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error||'Error');
+    _odooCompanies = d.companies || [];
+    st.style.color='#2ea043'; st.textContent=`✓ ${_odooCompanies.length} empresa(s), ${d.total_pos} POS encontrados`;
+    renderEmpresaSelector();
+    document.getElementById('card_select_empresas').style.display='block';
+    document.getElementById('card_empresas_saved').style.display='none';
+    // Preseleccionar la config guardada
+    const cfg = loadCfg();
+    if(cfg.company_id) _selectedCompanyId = cfg.company_id;
+    if(cfg.pos_list) cfg.pos_list.forEach(p => _selectedPosIds.add(p.id));
+    renderEmpresaSelector();
+  } catch(e) {
+    st.style.color='#f85149'; st.textContent='✗ '+e.message;
+    toast('Error: '+e.message, 'err');
+  }
 }
-function addPOS() {
-  const id=parseInt(document.getElementById('newPosId').value), name=document.getElementById('newPosName').value.trim();
-  if(!id||!name){ toast('ID y nombre son requeridos','err'); return; }
-  _posList.push({id,name});
-  renderPOSTable(_posList);
-  document.getElementById('newPosId').value=''; document.getElementById('newPosName').value='';
+
+function renderEmpresaSelector() {
+  const cDiv = document.getElementById('companySelector');
+  const pDiv = document.getElementById('posSelector');
+
+  // Empresa
+  cDiv.innerHTML = _odooCompanies.map(c => `
+    <div onclick="selectCompanyAdmin(${c.id})" style="
+      display:flex;align-items:center;gap:12px;padding:12px 14px;
+      border-radius:8px;cursor:pointer;transition:all .15s;
+      background:${_selectedCompanyId===c.id?'#1f2937':'#0d1117'};
+      border:1px solid ${_selectedCompanyId===c.id?'#58a6ff':'#30363d'};
+    ">
+      <div style="width:16px;height:16px;border-radius:50%;border:2px solid ${_selectedCompanyId===c.id?'#58a6ff':'#484f58'};
+        background:${_selectedCompanyId===c.id?'#58a6ff':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center">
+        ${_selectedCompanyId===c.id?'<div style="width:6px;height:6px;border-radius:50%;background:#fff"></div>':''}
+      </div>
+      <div style="flex:1">
+        <div style="color:#e2e8f0;font-size:13px;font-weight:600">${esc(c.name)}</div>
+        <div style="color:#8b949e;font-size:11px;font-family:var(--mono)">RUC: ${c.vat||'—'} · ${c.pos_list.length} POS disponibles</div>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:#58a6ff;background:#1f6feb22;padding:3px 8px;border-radius:4px">ID: ${c.id}</div>
+    </div>`).join('');
+
+  // POS de la empresa seleccionada
+  const company = _odooCompanies.find(c=>c.id===_selectedCompanyId);
+  if(!company || !company.pos_list.length) {
+    pDiv.innerHTML = `<div style="color:#484f58;font-family:var(--mono);font-size:12px;padding:8px">
+      ${_selectedCompanyId ? 'Esta empresa no tiene POS activos' : 'Selecciona una empresa primero'}
+    </div>`;
+    return;
+  }
+
+  pDiv.innerHTML = company.pos_list.map(p => {
+    const checked = _selectedPosIds.has(p.id);
+    const open    = p.session_open;
+    return `
+    <div onclick="togglePosAdmin(${p.id})" style="
+      display:flex;align-items:center;gap:12px;padding:11px 14px;
+      border-radius:8px;cursor:pointer;transition:all .15s;
+      background:${checked?'#1a2e1a':'#0d1117'};
+      border:1px solid ${checked?'#2ea043':'#30363d'};
+    ">
+      <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${checked?'#2ea043':'#484f58'};
+        background:${checked?'#2ea043':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center">
+        ${checked?'<span style="color:#fff;font-size:10px;line-height:1">✓</span>':''}
+      </div>
+      <div style="flex:1">
+        <div style="color:#e2e8f0;font-size:13px;font-weight:600">${esc(p.name)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <span style="width:6px;height:6px;border-radius:50%;background:${open?'#2ea043':'#484f58'}"></span>
+          <span style="color:#8b949e;font-size:11px;font-family:var(--mono)">${open?'Sesión abierta':'Cerrado'}</span>
+        </div>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:#8b949e;background:#161b22;padding:3px 8px;border-radius:4px">ID: ${p.id}</div>
+    </div>`;
+  }).join('');
 }
-function removePOS(i) { _posList.splice(i,1); renderPOSTable(_posList); }
+
+function selectCompanyAdmin(id) {
+  _selectedCompanyId = id;
+  _selectedPosIds = new Set(); // reset POS al cambiar empresa
+  renderEmpresaSelector();
+}
+
+function togglePosAdmin(id) {
+  if(_selectedPosIds.has(id)) _selectedPosIds.delete(id);
+  else _selectedPosIds.add(id);
+  renderEmpresaSelector();
+}
+
 function saveEmpresasConfig() {
-  saveCfg({ company_id:parseInt(v('cfg_company_id')), company_name:v('cfg_company_name'), pos_list:_posList });
-  toast('✅ Empresas y POS guardados','ok');
+  if(!_selectedCompanyId){ toast('Selecciona una empresa','err'); return; }
+  if(!_selectedPosIds.size){ toast('Selecciona al menos un POS','err'); return; }
+  const company  = _odooCompanies.find(c=>c.id===_selectedCompanyId);
+  const posList  = (company?.pos_list||[]).filter(p=>_selectedPosIds.has(p.id));
+  saveCfg({ company_id:_selectedCompanyId, company_name:company?.name||'', pos_list:posList });
+  // Mostrar resumen
+  document.getElementById('card_select_empresas').style.display='none';
+  document.getElementById('card_empresas_saved').style.display='block';
+  document.getElementById('empresasSavedInfo').innerHTML =
+    `🏢 <strong style="color:#e2e8f0">${esc(company?.name||'')}</strong><br>` +
+    posList.map(p=>`🖥️ ${esc(p.name)} <span style="color:#484f58">(ID: ${p.id})</span>`).join('<br>');
+  toast('✅ Empresa y POS guardados','ok');
 }
+
+function editEmpresasConfig() {
+  document.getElementById('card_empresas_saved').style.display='none';
+  document.getElementById('card_select_empresas').style.display='block';
+}
+
+// Mantener compatibilidad con loadAdminCfg
+function renderPOSTable() {} // ya no se usa
+function addPOS() {}         // ya no se usa
 
 function changeAdminPass() {
   const p1=v('cfg_pass1'), p2=v('cfg_pass2');
