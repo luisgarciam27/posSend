@@ -1209,7 +1209,7 @@ function renderTable(rows) {
     else if(!hasPhone)
       btn = `<button class="tbtn-send no-phone" disabled title="Sin teléfono">⚠ Sin tel.</button>`;
     else
-      btn = `<button class="tbtn-send ready" onclick="openSendModal('${id}')">📲 Enviar WSP</button>`;
+      btn = `<button class="tbtn-send ready" data-orderid="${id}" onclick="openSendModal('${id}')">📲 Enviar WSP</button>`;
 
     return `<tr class="${isNew?'is-new':''} ${isSent?'is-sent':''}">
       <td>
@@ -1270,48 +1270,85 @@ function closeModal() {
 
 async function confirmSend() {
   if(!S.pending) return;
+  const order = S.pending;  // guardar referencia ANTES de cerrar modal
   closeModal();
-  await doSend(S.pending);
+  await doSend(order);
 }
 
 async function doSend(o) {
-  const id  = String(o.order_id);
-  const btn = document.querySelector(`[onclick="openSendModal('${id}')"]`);
-  if(btn){ btn.className='tbtn-send sending'; btn.textContent='⏳ Enviando...'; btn.disabled=true; btn.onclick=null; }
+  const id = String(o.order_id);
 
-  const cfg = loadCfg();
+  // FIX: buscar botón por data-orderid (más robusto que by onclick string)
+  const btn = document.querySelector(`[data-orderid="${id}"]`);
+  if(btn){ btn.className='tbtn-send sending'; btn.textContent='⏳ Enviando...'; btn.disabled=true; }
+
+  // FIX: validar que tenemos uid y password antes de llamar
+  if(!S.vendorUid || !S._vendorPass) {
+    toast('Sesión expirada — vuelve a iniciar sesión', 'err');
+    if(btn){ btn.className='tbtn-send ready'; btn.textContent='📲 Reintentar'; btn.disabled=false; }
+    return;
+  }
+
+  const cfg   = loadCfg();
   const items = (o.lines||[]).map(l=>`  • ${l.name} ×${l.qty}  S/${fmt(l.price*l.qty)}`).join('\n');
+
   const payload = {
-    action:'send_whatsapp',
+    uid:          S.vendorUid,
+    password:     S._vendorPass,
+    action:       'send_whatsapp',
     order_id:     o.order_id,
     order_number: o.order_number || o.name,
-    invoice_id:   o.invoice_id   || null,   // ← FIX: necesario para descargar el PDF de la factura
-    client_name:  o.client?.name,
-    client_phone: o.client?.phone_whatsapp,
+    invoice_id:   o.invoice_id   || null,   // ← clave para descargar PDF de factura
+    client_name:  o.client?.name  || 'Cliente',
+    client_phone: o.client?.phone_whatsapp || '',
     total:        o.total,
     currency:     'PEN',
     vendor_name:  S.vendorName,
-    company_id:   cfg.company_id,
-    message:      buildMsg(o, items)
+    company_id:   cfg.company_id || null,
+    message:      buildMsg(o, items),
   };
+
+  console.log('[doSend] payload →', {
+    order_number: payload.order_number,
+    invoice_id:   payload.invoice_id,
+    client_phone: payload.client_phone,
+    uid:          payload.uid,
+    hasPass:      !!payload.password,
+  });
 
   try {
     const r = await fetch('/api/send', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ ...payload, uid: S.vendorUid, password: S._vendorPass })
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
     });
-    if(!r.ok) { const d=await r.json().catch(()=>{}); throw new Error(d?.error||'HTTP '+r.status); }
+
+    const responseText = await r.text();
+    console.log('[doSend] respuesta status:', r.status, 'body:', responseText);
+
+    if(!r.ok) {
+      let errMsg = 'HTTP ' + r.status;
+      try { errMsg = JSON.parse(responseText)?.error || errMsg; } catch {}
+      throw new Error(errMsg);
+    }
+
+    // Éxito
     S.sent.add(id);
     localStorage.setItem(SENT_KEY, JSON.stringify([...S.sent]));
-    if(btn){ btn.className='tbtn-send sent'; btn.textContent='✓ Enviado'; }
-    toast(`✅ Comprobante enviado a ${o.client?.name}`, 'ok');
+    if(btn){ btn.className='tbtn-send sent'; btn.textContent='✓ Enviado'; btn.disabled=true; }
+    toast(`✅ Comprobante enviado a ${o.client?.name || 'cliente'}`, 'ok');
     addLog(`Enviado: ${o.order_number||o.name} → +${o.client?.phone_whatsapp}`, 'ok');
     updateStats();
+
   } catch(e) {
-    if(btn){ btn.className='tbtn-send ready'; btn.textContent='📲 Reintentar'; btn.disabled=false; btn.onclick=()=>openSendModal(id); }
-    toast('Error al enviar: '+e.message, 'err');
-    addLog(`Error enviando ${o.order_number}: ${e.message}`, 'err');
+    console.error('[doSend] error:', e.message);
+    if(btn){
+      btn.className='tbtn-send ready';
+      btn.textContent='📲 Reintentar';
+      btn.disabled=false;
+    }
+    toast('❌ Error al enviar: ' + e.message, 'err');
+    addLog(`Error enviando ${o.order_number||o.name}: ${e.message}`, 'err');
   }
 }
 
