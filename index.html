@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>POSSend</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ══════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════ */
+:root {
+  /* Neutrals */
+  --white:   #ffffff;
+  --gray-50: #f8f9fa;
+  --gray-100:#f1f3f5;
+  --gray-200:#e9ecef;
+  --gray-300:#dee2e6;
+  --gray-400:#ced4da;
+  --gray-500:#adb5bd;
+  --gray-600:#6c757d;
+  --gray-700:#495057;
+  --gray-800:#343a40;
+  --gray-900:#212529;
+  --black:   #0d1117;
+
+  /* Brand */
+  --green:   #16a34a;
+  --green-l: #dcfce7;
+  --green-m: #86efac;
+  --green-d: #14532d;
+  --wsp:     #25d366;
+  --wsp-d:   #128c7e;
+  --amber:   #d97706;
+  --amber-l: #fef9c3;
+  --red:     #dc2626;
+  --red-l:   #fee2e2;
+  --blue:    #2563eb;
+  --blue-l:  #eff6ff;
+
+  --outfit:  'Outfit', sans-serif;
+  --mono:    'JetBrains Mono', monospace;
+  --r:       8px;
+  --r-lg:    14px;
+  --shadow:  0 1px 4px #0000000f, 0 4px 16px #00000009;
+  --shadow-md: 0 4px 20px #00000018, 0 1px 4px #0000000c;
+  --shadow-lg: 0 12px 40px #00000022, 0 4px 12px #00000012;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: var(--outfit);
+  background: var(--gray-50);
+  color: var(--gray-900);
+  min-height: 100vh;
+}
+
+/* ── UTILITY ── */
+.hidden { display: none !important; }
+.mono   { font-family: var(--mono); }
+
+/* ══════════════════════════════════════════
+   SHARED COMPONENTS
+══════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 20px; border-radius: var(--r); border: none;
+  font-family: var(--outfit); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all .18s; white-space: nowrap;
+}
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--gray-900); color: #fff; }
+.btn-primary:hover { background: var(--gray-800); }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:hover { background: var(--green-d); }
+.btn-wsp { background: var(--wsp-d); color: #fff; }
+.btn-wsp:hover { background: #0d7a6e; }
+.btn-ghost { background: transparent; color: var(--gray-700); border: 1.5px solid var(--gray-300); }
+.btn-ghost:hover { background: var(--gray-100); border-color: var(--gray-400); }
+.btn-danger { background: var(--red-l); color: var(--red); border: 1.5px solid #fca5a5; }
+.btn-danger:hover { background: #fecaca; }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-lg { padding: 13px 28px; font-size: 15px; border-radius: 10px; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-icon { padding: 9px; border-radius: var(--r); }
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
+.field label { font-size: 12px; font-weight: 600; color: var(--gray-600); text-transform: uppercase; letter-spacing: .5px; font-family: var(--mono); }
+.field input, .field select, .field textarea {
+  padding: 10px 13px; border: 1.5px solid var(--gray-300); border-radius: var(--r);
+  font-family: var(--outfit); font-size: 14px; color: var(--gray-900);
+  background: var(--white); outline: none; transition: border-color .18s, box-shadow .18s;
+}
+.field input:focus, .field select:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-l); }
+.field input::placeholder { color: var(--gray-400); }
+.field .hint { font-size: 11px; color: var(--gray-500); font-family: var(--mono); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; font-family: var(--mono);
+  padding: 3px 9px; border-radius: 20px; letter-spacing: .3px;
+}
+.b-green  { background: var(--green-l); color: var(--green); }
+.b-amber  { background: var(--amber-l); color: var(--amber); }
+.b-red    { background: var(--red-l);   color: var(--red);   }
+.b-blue   { background: var(--blue-l);  color: var(--blue);  }
+.b-gray   { background: var(--gray-100);color: var(--gray-600);}
+
+.card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 12px 20px; border-radius: 10px;
+  font-size: 14px; font-weight: 500;
+  box-shadow: var(--shadow-lg); z-index: 9999;
+  opacity: 0; transform: translateY(12px);
+  transition: all .28s; pointer-events: none;
+  display: flex; align-items: center; gap: 10px; max-width: 380px;
+}
+#toast.show { opacity: 1; transform: none; }
+#toast.ok  { background: var(--green); color: #fff; }
+#toast.err { background: var(--red); color: #fff; }
+#toast.inf { background: var(--gray-900); color: #fff; }
+
+/* Modal */
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: #00000050; backdrop-filter: blur(4px);
+  z-index: 500; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-bg.open { display: flex; }
+.modal-box {
+  background: var(--white); border-radius: 16px;
+  box-shadow: var(--shadow-lg); width: 100%; max-width: 460px;
+  animation: mup .22s ease;
+}
+@keyframes mup { from{transform:translateY(16px);opacity:0} to{transform:none;opacity:1} }
+.modal-head { padding: 24px 28px 20px; border-bottom: 1px solid var(--gray-200); }
+.modal-head h3 { font-size: 17px; font-weight: 700; }
+.modal-head p  { font-size: 13px; color: var(--gray-600); margin-top: 4px; }
+.modal-body { padding: 24px 28px; }
+.modal-foot { padding: 16px 28px; border-top: 1px solid var(--gray-200); display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ══════════════════════════════════════════
+   VIEW: VENDOR LOGIN
+══════════════════════════════════════════ */
+#viewLogin {
+  min-height: 100vh;
+  display: flex;
+  background:
+    radial-gradient(ellipse 60% 50% at 90% 10%, #dcfce7 0%, transparent 55%),
+    radial-gradient(ellipse 40% 60% at 5% 90%, #f0fdf4 0%, transparent 55%),
+    var(--white);
+}
+
+.login-left {
+  width: 420px;
+  flex-shrink: 0;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid var(--gray-200);
+  background: var(--white);
+}
+
+.login-brand {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 48px;
+}
+.login-brand-icon {
+  width: 40px; height: 40px;
+  background: var(--gray-900);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.login-brand-name {
+  font-size: 20px; font-weight: 800; color: var(--gray-900);
+  letter-spacing: -0.5px;
+}
+.login-brand-name span { color: var(--green); }
+
+.login-title { font-size: 26px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.5px; margin-bottom: 6px; }
+.login-sub   { font-size: 14px; color: var(--gray-500); margin-bottom: 32px; }
+
+.login-err {
+  background: var(--red-l); border: 1px solid #fca5a5;
+  border-radius: var(--r); padding: 10px 14px;
+  font-size: 13px; color: var(--red); margin-bottom: 16px; display: none;
+}
+
+.login-right {
+  flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px;
+}
+.login-info-card {
+  max-width: 360px;
+}
+.login-info-title { font-size: 13px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 24px; font-family: var(--mono); }
+.feature-list { display: flex; flex-direction: column; gap: 20px; }
+.feature-item { display: flex; align-items: flex-start; gap: 14px; }
+.feature-icon { font-size: 22px; margin-top: 1px; flex-shrink: 0; }
+.feature-title { font-size: 15px; font-weight: 600; color: var(--gray-800); }
+.feature-desc  { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+
+/* ══════════════════════════════════════════
+   VIEW: VENDOR DASHBOARD
+══════════════════════════════════════════ */
+#viewDash { display: none; flex-direction: column; min-height: 100vh; }
+
+/* Topbar */
+.dash-top {
+  background: var(--white);
+  border-bottom: 1px solid var(--gray-200);
+  height: 60px; padding: 0 32px;
+  display: flex; align-items: center; gap: 20px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 1px 0 var(--gray-200);
+}
+.dash-brand { font-size: 17px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.5px; }
+.dash-brand span { color: var(--green); }
+
+.dash-context {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; background: var(--gray-100);
+  border-radius: 20px; font-size: 13px; color: var(--gray-700);
+}
+.dash-context strong { color: var(--gray-900); font-weight: 700; }
+
+.dash-top-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.vendor-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px 6px 8px;
+  background: var(--gray-100); border-radius: 20px;
+}
+.vendor-av {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--gray-900); color: var(--white);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.vendor-name { font-size: 13px; font-weight: 600; color: var(--gray-800); }
+
+.live-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 20px;
+  background: var(--green-l); color: var(--green);
+  font-size: 12px; font-weight: 600; border: 1px solid var(--green-m);
+}
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: ldot 2s infinite; }
+@keyframes ldot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.5);opacity:.5} }
+
+/* Main grid */
+.dash-main { display: grid; grid-template-columns: 240px 1fr; flex: 1; }
+
+/* Side stats */
+.dash-side {
+  background: var(--white); border-right: 1px solid var(--gray-200);
+  padding: 24px 20px; display: flex; flex-direction: column; gap: 8px;
+}
+.side-label { font-size: 11px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); padding: 0 4px; margin-top: 8px; margin-bottom: 4px; }
+.side-label:first-child { margin-top: 0; }
+
+.stat-tile {
+  padding: 14px 16px; border-radius: var(--r); background: var(--gray-50);
+  border: 1px solid var(--gray-200); display: flex; align-items: center; gap: 12px;
+}
+.stat-tile-icon { font-size: 20px; width: 36px; text-align: center; flex-shrink: 0; }
+.stat-tile-val { font-size: 22px; font-weight: 800; line-height: 1; color: var(--gray-900); }
+.stat-tile-lbl { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+
+.sync-row { display: flex; align-items: center; gap: 8px; padding: 10px 4px; }
+.sync-bar { flex: 1; height: 3px; background: var(--gray-200); border-radius: 2px; overflow: hidden; }
+.sync-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 1s linear; width: 0%; }
+.sync-lbl { font-size: 11px; color: var(--gray-500); white-space: nowrap; font-family: var(--mono); }
+
+/* Main content */
+.dash-content { overflow-y: auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
+
+.content-hd { display: flex; align-items: center; justify-content: space-between; }
+.content-hd h2 { font-size: 18px; font-weight: 800; color: var(--gray-900); }
+.content-hd-sub { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+
+/* Orders table */
+.orders-wrap { overflow: hidden; border: 1px solid var(--gray-200); border-radius: var(--r-lg); }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  background: var(--gray-50); padding: 12px 20px;
+  font-size: 11px; font-weight: 700; color: var(--gray-500);
+  text-transform: uppercase; letter-spacing: .8px; font-family: var(--mono);
+  text-align: left; border-bottom: 1px solid var(--gray-200);
+}
+tbody tr {
+  border-bottom: 1px solid var(--gray-100);
+  transition: background .12s;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--gray-50); }
+tbody tr.is-new { background: #f0fdf4; }
+tbody tr.is-new:hover { background: #dcfce7; }
+tbody tr.is-sent { opacity: .6; }
+td { padding: 16px 20px; vertical-align: middle; font-size: 14px; }
+
+.order-num { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--gray-900); }
+.order-time { font-family: var(--mono); font-size: 11px; color: var(--gray-500); margin-top: 3px; }
+
+.client-name { font-weight: 600; color: var(--gray-900); }
+.client-phone { font-family: var(--mono); font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+.client-phone.warn { color: var(--amber); }
+
+.amount-val { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--gray-900); }
+.amount-cur { font-size: 11px; color: var(--gray-500); }
+
+.new-tag {
+  display: inline-block;
+  background: var(--green); color: #fff;
+  font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px; letter-spacing: .5px;
+  margin-left: 6px; vertical-align: middle;
+  animation: blink-in .4s ease;
+}
+@keyframes blink-in { 0%{transform:scale(0)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
+
+/* Send btn in table */
+.tbtn-send {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--r); border: none;
+  font-family: var(--outfit); font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all .18s; white-space: nowrap;
+}
+.tbtn-send.ready { background: var(--wsp-d); color: #fff; }
+.tbtn-send.ready:hover { background: #0d7a6e; transform: scale(1.02); }
+.tbtn-send.sent { background: var(--green-l); color: var(--green); cursor: default; }
+.tbtn-send.sending { background: var(--amber-l); color: var(--amber); cursor: wait; }
+.tbtn-send.no-phone { background: var(--gray-100); color: var(--gray-400); cursor: not-allowed; }
+
+/* Empty / skeleton */
+.empty-row td { text-align: center; padding: 64px; color: var(--gray-400); }
+.empty-row .empty-icon { font-size: 40px; display: block; margin-bottom: 12px; opacity: .4; }
+.empty-row p { font-size: 14px; }
+
+/* ══════════════════════════════════════════
+   VIEW: ADMIN PANEL
+══════════════════════════════════════════ */
+#viewAdmin {
+  display: none; min-height: 100vh;
+  background: var(--black);
+  color: #e2e8f0;
+  font-family: var(--outfit);
+}
+
+.admin-topbar {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  height: 56px; padding: 0 32px;
+  display: flex; align-items: center; gap: 20px;
+}
+.admin-brand {
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  color: #58a6ff; letter-spacing: -0.3px;
+}
+.admin-tag {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  padding: 3px 10px; background: #f7960020; border: 1px solid #f7960040;
+  color: #f79600; border-radius: 4px; letter-spacing: .5px;
+}
+.admin-top-right { margin-left: auto; display: flex; gap: 10px; }
+.admin-link {
+  font-family: var(--mono); font-size: 12px; color: #8b949e;
+  background: transparent; border: 1px solid #30363d; border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; transition: all .15s;
+}
+.admin-link:hover { color: #e2e8f0; border-color: #8b949e; }
+
+.admin-body { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 56px); }
+
+.admin-nav {
+  background: #0d1117; border-right: 1px solid #21262d;
+  padding: 20px 12px; display: flex; flex-direction: column; gap: 2px;
+}
+.admin-nav-label {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  color: #484f58; text-transform: uppercase; letter-spacing: 1.5px;
+  padding: 0 8px; margin-top: 16px; margin-bottom: 6px;
+}
+.admin-nav-label:first-child { margin-top: 0; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 6px;
+  font-size: 13px; font-weight: 500; color: #8b949e;
+  cursor: pointer; transition: all .15s;
+}
+.nav-item:hover { background: #161b22; color: #e2e8f0; }
+.nav-item.active { background: #1f2937; color: #58a6ff; font-weight: 600; }
+.nav-item .ni { font-size: 15px; width: 20px; text-align: center; }
+
+.admin-content { padding: 32px; overflow-y: auto; }
+.admin-section { display: none; }
+.admin-section.active { display: block; }
+
+.admin-section-title {
+  font-size: 18px; font-weight: 800; color: #e2e8f0;
+  margin-bottom: 6px; letter-spacing: -0.3px;
+}
+.admin-section-sub { font-size: 13px; color: #8b949e; margin-bottom: 24px; }
+
+.admin-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+  padding: 24px; margin-bottom: 16px;
+}
+.admin-card-title { font-size: 13px; font-weight: 700; color: #8b949e; text-transform: uppercase; letter-spacing: .8px; font-family: var(--mono); margin-bottom: 16px; }
+
+.admin-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.admin-field label { font-size: 11px; font-weight: 600; color: #6e7681; font-family: var(--mono); text-transform: uppercase; letter-spacing: .5px; }
+.admin-field input, .admin-field select {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  color: #e2e8f0; font-family: var(--mono); font-size: 13px;
+  padding: 9px 12px; outline: none; transition: border-color .18s;
+}
+.admin-field input:focus, .admin-field select:focus { border-color: #58a6ff; box-shadow: 0 0 0 3px #1f6feb22; }
+.admin-field input::placeholder { color: #484f58; }
+.admin-field .hint { font-size: 10px; color: #484f58; }
+
+.admin-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 18px; border-radius: 6px; border: none;
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .18s; letter-spacing: .3px;
+}
+.abn-primary { background: #238636; color: #fff; }
+.abn-primary:hover { background: #2ea043; }
+.abn-blue { background: #1f6feb; color: #fff; }
+.abn-blue:hover { background: #388bfd; }
+.abn-ghost { background: transparent; color: #8b949e; border: 1px solid #30363d; }
+.abn-ghost:hover { color: #e2e8f0; border-color: #8b949e; }
+.abn-danger { background: #da363322; color: #f85149; border: 1px solid #da363340; }
+.abn-danger:hover { background: #da363344; }
+
+/* admin config table */
+.config-table { width: 100%; border-collapse: collapse; }
+.config-table th {
+  text-align: left; padding: 8px 14px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600; color: #484f58;
+  text-transform: uppercase; letter-spacing: .8px;
+  border-bottom: 1px solid #21262d;
+}
+.config-table td { padding: 12px 14px; border-bottom: 1px solid #21262d; font-size: 13px; }
+.config-table tr:last-child td { border-bottom: none; }
+.config-table tr:hover td { background: #0d1117; }
+
+.online-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+.dot-green { background: #2ea043; }
+.dot-gray  { background: #484f58; }
+
+/* Status indicator */
+.conn-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+}
+.cs-ok  { background: #23863620; color: #2ea043; border: 1px solid #23863640; }
+.cs-err { background: #da363320; color: #f85149; border: 1px solid #da363340; }
+.cs-wait{ background: #6e768120; color: #8b949e; border: 1px solid #6e768130; }
+
+/* Admin password gate */
+#adminGate {
+  min-height: 100vh; background: var(--black);
+  display: flex; align-items: center; justify-content: center;
+}
+.gate-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+  padding: 40px; width: 360px; text-align: center;
+}
+.gate-icon { font-size: 36px; margin-bottom: 16px; }
+.gate-title { font-size: 18px; font-weight: 800; color: #e2e8f0; margin-bottom: 4px; }
+.gate-sub { font-size: 13px; color: #8b949e; margin-bottom: 24px; }
+.gate-err { background: #da363320; border: 1px solid #da363340; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #f85149; margin-bottom: 12px; display: none; font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════
+     VISTA: LOGIN VENDEDOR
+════════════════════════════════════════ -->
+<div id="viewLogin">
+  <div class="login-left">
+    <div class="login-brand">
+      <div class="login-brand-icon">📲</div>
+      <div class="login-brand-name">POS<span>Send</span></div>
+    </div>
+
+    <div class="login-title">Bienvenido</div>
+    <div class="login-sub">Ingresa con tu cuenta de Odoo para ver tus ventas</div>
+
+    <div class="login-err" id="loginErr">❌ Usuario o contraseña incorrectos</div>
+
+    <div class="field">
+      <label>Correo Odoo</label>
+      <input id="loginUser" type="email" placeholder="tu@empresa.com" autocomplete="username"/>
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:8px" onclick="doLogin()" id="btnLogin">
+      Ingresar →
+    </button>
+
+    <div style="margin-top:24px;text-align:center">
+      <span style="font-size:12px;color:var(--gray-400)">¿Eres administrador?</span>
+      <button onclick="showAdminGate()" style="background:none;border:none;font-size:12px;color:var(--gray-600);cursor:pointer;font-weight:600;text-decoration:underline;font-family:var(--outfit);margin-left:4px">Panel admin</button>
+    </div>
+  </div>
+
+  <div class="login-right">
+    <div class="login-info-card">
+      <div class="login-info-title">¿Qué puedes hacer?</div>
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="feature-icon">🔄</div>
+          <div>
+            <div class="feature-title">Ventas en tiempo real</div>
+            <div class="feature-desc">Ve tus ventas del turno actual actualizadas automáticamente cada 30 segundos</div>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">📲</div>
+          <div>
+            <div class="feature-title">Envío con un clic</div>
+            <div class="feature-desc">Envía el comprobante PDF al WhatsApp del cliente directamente desde la lista</div>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">✅</div>
+          <div>
+            <div class="feature-title">Control de envíos</div>
+            <div class="feature-desc">Sabe exactamente qué comprobantes ya fueron enviados y cuáles están pendientes</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     VISTA: DASHBOARD VENDEDOR
+════════════════════════════════════════ -->
+<div id="viewDash">
+  <header class="dash-top">
+    <div class="dash-brand">POS<span>Send</span></div>
+
+    <div class="dash-context">
+      <span id="ctx_company" style="color:var(--gray-500)">—</span>
+      <span style="color:var(--gray-400)">›</span>
+      <strong id="ctx_pos">—</strong>
+    </div>
+
+    <div class="dash-top-right">
+      <div class="live-pill">
+        <div class="live-dot"></div>
+        <span>En vivo</span>
+      </div>
+      <div class="vendor-chip">
+        <div class="vendor-av" id="vendorAv">--</div>
+        <div class="vendor-name" id="vendorName">Vendedor</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Salir</button>
+    </div>
+  </header>
+
+  <div class="dash-main">
+    <!-- Side stats -->
+    <aside class="dash-side">
+      <div class="side-label">Mi turno hoy</div>
+
+      <div class="stat-tile">
+        <div class="stat-tile-icon">🧾</div>
+        <div>
+          <div class="stat-tile-val" id="st_ventas">0</div>
+          <div class="stat-tile-lbl">Ventas totales</div>
+        </div>
+      </div>
+
+      <div class="stat-tile">
+        <div class="stat-tile-icon">📲</div>
+        <div>
+          <div class="stat-tile-val" id="st_enviados" style="color:var(--wsp-d)">0</div>
+          <div class="stat-tile-lbl">WSP enviados</div>
+        </div>
+      </div>
+
+      <div class="stat-tile">
+        <div class="stat-tile-icon">⏳</div>
+        <div>
+          <div class="stat-tile-val" id="st_pend" style="color:var(--amber)">0</div>
+          <div class="stat-tile-lbl">Pendientes</div>
+        </div>
+      </div>
+
+      <div class="stat-tile">
+        <div class="stat-tile-icon">💰</div>
+        <div>
+          <div class="stat-tile-val" id="st_total" style="font-size:16px;color:var(--green)">S/ 0</div>
+          <div class="stat-tile-lbl">Total vendido</div>
+        </div>
+      </div>
+
+      <div style="margin-top:auto">
+        <div class="side-label">Auto-sincronización</div>
+        <div class="sync-row">
+          <div class="sync-bar"><div class="sync-fill" id="syncFill"></div></div>
+          <div class="sync-lbl" id="syncLbl">30s</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="syncNow()">
+          ⟳ Sincronizar ahora
+        </button>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <main class="dash-content">
+      <div class="content-hd">
+        <div>
+          <h2 id="ct_title">Mis ventas del turno</h2>
+          <div class="content-hd-sub" id="ct_sub">Actualizando...</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="filterSel" onchange="applyFilter()" style="padding:8px 12px;border:1.5px solid var(--gray-300);border-radius:var(--r);font-family:var(--outfit);font-size:13px;color:var(--gray-800);background:var(--white);outline:none;cursor:pointer">
+            <option value="all">Todas las ventas</option>
+            <option value="pending">⏳ Pendientes de envío</option>
+            <option value="sent">✅ Ya enviadas</option>
+            <option value="no_phone">⚠️ Sin teléfono</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="orders-wrap card">
+        <table>
+          <thead>
+            <tr>
+              <th>Comprobante</th>
+              <th>Cliente</th>
+              <th>Productos</th>
+              <th>Estado</th>
+              <th style="text-align:right">Total</th>
+              <th style="text-align:center">WhatsApp</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody">
+            <tr class="empty-row">
+              <td colspan="6">
+                <span class="empty-icon">⏳</span>
+                <p>Cargando ventas...</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     ADMIN: GATE (password)
+════════════════════════════════════════ -->
+<div id="adminGate" style="display:none">
+  <div class="gate-card">
+    <div class="gate-icon">🔐</div>
+    <div class="gate-title">Panel de Administración</div>
+    <div class="gate-sub">Acceso restringido — solo el administrador</div>
+    <div class="gate-err" id="gateErr">Contraseña incorrecta</div>
+    <div style="text-align:left">
+      <div class="admin-field">
+        <label>Contraseña</label>
+        <input type="password" id="gatePass" placeholder="••••••••" onkeydown="if(event.key==='Enter')checkGate()"/>
+      </div>
+    </div>
+    <button class="admin-btn abn-primary" style="width:100%;margin-top:4px;justify-content:center" onclick="checkGate()">Entrar al panel</button>
+    <button class="admin-btn abn-ghost" style="width:100%;margin-top:8px;justify-content:center" onclick="showView('login')">← Volver al login</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     VISTA: ADMIN PANEL
+════════════════════════════════════════ -->
+<div id="viewAdmin">
+  <header class="admin-topbar">
+    <div class="admin-brand">◈ POSSend</div>
+    <div class="admin-tag">ADMIN</div>
+    <div class="admin-top-right">
+      <button class="admin-link" onclick="showView('login')">← Salir</button>
+    </div>
+  </header>
+
+  <div class="admin-body">
+    <!-- Nav -->
+    <nav class="admin-nav">
+      <div class="admin-nav-label">Configuración</div>
+      <div class="nav-item active" onclick="adminNav('conexion',this)"><span class="ni">🔌</span> Conexión Odoo</div>
+      <div class="nav-item" onclick="adminNav('webhook',this)"><span class="ni">⚡</span> Webhook n8n</div>
+      <div class="nav-item" onclick="adminNav('empresas',this)"><span class="ni">🏢</span> Empresas & POS</div>
+      <div class="admin-nav-label">Sistema</div>
+      <div class="nav-item" onclick="adminNav('seguridad',this)"><span class="ni">🔐</span> Seguridad</div>
+      <div class="nav-item" onclick="adminNav('logs',this)"><span class="ni">📟</span> Logs</div>
+    </nav>
+
+    <!-- Sections -->
+    <div class="admin-content">
+
+      <!-- CONEXIÓN ODOO -->
+      <div class="admin-section active" id="sec_conexion">
+        <div class="admin-section-title">Conexión Odoo</div>
+        <div class="admin-section-sub">Credenciales del superadministrador para conectar con la instancia Odoo. Los vendedores usan sus propias credenciales.</div>
+
+        <div class="admin-card">
+          <div class="admin-card-title">Datos de conexión</div>
+          <div class="admin-field">
+            <label>URL de Odoo</label>
+            <input id="cfg_url" type="text" placeholder="https://miempresa.odoo.com"/>
+            <div class="hint">Sin barra al final</div>
+          </div>
+          <div class="admin-field">
+            <label>Base de datos</label>
+            <input id="cfg_db" type="text" placeholder="nombre_base_datos"/>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="admin-field">
+              <label>Email admin</label>
+              <input id="cfg_user" type="email" placeholder="admin@empresa.com"/>
+            </div>
+            <div class="admin-field">
+              <label>API Key Odoo</label>
+              <input id="cfg_key" type="password" placeholder="tu_api_key"/>
+              <div class="hint">Settings → Mi Perfil → API Keys</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+            <button class="admin-btn abn-primary" onclick="saveOdooConfig()">💾 Guardar</button>
+            <button class="admin-btn abn-blue" onclick="testOdoo()">⚡ Probar conexión</button>
+            <span class="conn-status cs-wait" id="odooConnStatus">◌ Sin probar</span>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <div class="admin-card-title">Estado de la conexión</div>
+          <table class="config-table">
+            <thead><tr><th>Parámetro</th><th>Valor</th><th>Estado</th></tr></thead>
+            <tbody id="connTable">
+              <tr><td colspan="3" style="color:#484f58;font-family:var(--mono);font-size:12px;padding:16px">Sin configurar — ingresa los datos y prueba la conexión</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- WEBHOOK N8N -->
+      <div class="admin-section" id="sec_webhook">
+        <div class="admin-section-title">Webhook n8n</div>
+        <div class="admin-section-sub">La URL del webhook y el token secreto se configuran como <strong>variables de entorno en Vercel</strong>, no aquí. Esto evita exponer credenciales en el navegador.</div>
+
+        <div class="admin-card">
+          <div class="admin-card-title">Variables de entorno requeridas en Vercel</div>
+          <table class="config-table">
+            <thead><tr><th>Variable</th><th>Ejemplo</th><th>Descripción</th></tr></thead>
+            <tbody>
+              <tr><td style="font-family:var(--mono);color:#58a6ff">ODOO_URL</td><td style="font-family:var(--mono);font-size:11px;color:#8b949e">https://mi.odoo.com</td><td style="font-size:12px;color:#8b949e">URL de tu Odoo</td></tr>
+              <tr><td style="font-family:var(--mono);color:#58a6ff">ODOO_DB</td><td style="font-family:var(--mono);font-size:11px;color:#8b949e">mi_base_datos</td><td style="font-size:12px;color:#8b949e">Nombre de la BD</td></tr>
+              <tr><td style="font-family:var(--mono);color:#58a6ff">N8N_WEBHOOK_URL</td><td style="font-family:var(--mono);font-size:11px;color:#8b949e">https://n8n.vps.com/webhook/...</td><td style="font-size:12px;color:#8b949e">Webhook de envío WSP</td></tr>
+              <tr><td style="font-family:var(--mono);color:#58a6ff">N8N_SECRET_TOKEN</td><td style="font-family:var(--mono);font-size:11px;color:#8b949e">token_secreto_123</td><td style="font-size:12px;color:#8b949e">Token de seguridad</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+            <button class="admin-btn abn-blue" onclick="testWebhook()">⚡ Verificar configuración del servidor</button>
+            <span class="conn-status cs-wait" id="webhookStatus">◌ Sin verificar</span>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <div class="admin-card-title">Payload que enviará la app</div>
+          <pre style="font-family:var(--mono);font-size:11px;color:#8b949e;line-height:1.7;white-space:pre-wrap">{
+  "action": "send_whatsapp",
+  "order_id": 2001,
+  "order_number": "F001-00023",
+  "client_name": "Empresa SAC",
+  "client_phone": "51987654321",
+  "total": 590.00,
+  "currency": "PEN",
+  "vendor_name": "Carlos Rojas",
+  "company_id": 1,
+  "pos_id": 2,
+  "message": "📄 Comprobante F001-00023..."
+}</pre>
+        </div>
+      </div>
+
+      <!-- EMPRESAS & POS -->
+      <div class="admin-section" id="sec_empresas">
+        <div class="admin-section-title">Empresas & Puntos de Venta</div>
+        <div class="admin-section-sub">Define qué empresa y POS verá cada vendedor. Si no configuras nada, la app detectará automáticamente desde Odoo.</div>
+
+        <div class="admin-card">
+          <div class="admin-card-title">Empresa activa</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="admin-field">
+              <label>ID Empresa Odoo</label>
+              <input id="cfg_company_id" type="number" placeholder="1"/>
+              <div class="hint">res.company → id</div>
+            </div>
+            <div class="admin-field">
+              <label>Nombre (display)</label>
+              <input id="cfg_company_name" type="text" placeholder="Mi Empresa SAC"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <div class="admin-card-title">Puntos de venta habilitados</div>
+          <table class="config-table" id="posTable">
+            <thead><tr><th>ID POS</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="posBody">
+              <tr><td colspan="4" style="color:#484f58;font-family:var(--mono);font-size:12px;padding:16px">Sin POS configurados</td></tr>
+            </tbody>
+          </table>
+          <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+            <input id="newPosId" type="number" placeholder="ID POS" style="width:80px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e2e8f0;font-family:var(--mono);font-size:13px;padding:7px 10px;outline:none"/>
+            <input id="newPosName" type="text" placeholder="Nombre del POS" style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e2e8f0;font-family:var(--mono);font-size:13px;padding:7px 10px;outline:none"/>
+            <button class="admin-btn abn-primary" onclick="addPOS()">+ Agregar</button>
+            <button class="admin-btn abn-blue" onclick="saveEmpresasConfig()">💾 Guardar todo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEGURIDAD -->
+      <div class="admin-section" id="sec_seguridad">
+        <div class="admin-section-title">Seguridad</div>
+        <div class="admin-section-sub">Configura la contraseña del panel de administración.</div>
+        <div class="admin-card">
+          <div class="admin-card-title">Contraseña de administrador</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="admin-field">
+              <label>Nueva contraseña</label>
+              <input id="cfg_pass1" type="password" placeholder="mínimo 8 caracteres"/>
+            </div>
+            <div class="admin-field">
+              <label>Confirmar contraseña</label>
+              <input id="cfg_pass2" type="password" placeholder="repite la contraseña"/>
+            </div>
+          </div>
+          <button class="admin-btn abn-primary" onclick="changeAdminPass()">🔐 Cambiar contraseña</button>
+        </div>
+      </div>
+
+      <!-- LOGS -->
+      <div class="admin-section" id="sec_logs">
+        <div class="admin-section-title">Logs del sistema</div>
+        <div class="admin-section-sub">Registro de todas las operaciones de envío.</div>
+        <div class="admin-card" style="padding:0">
+          <div style="padding:16px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-family:var(--mono);font-size:12px;color:#8b949e">Últimas 100 entradas</span>
+            <button class="admin-btn abn-ghost" onclick="clearLogs()">🗑 Limpiar</button>
+          </div>
+          <div id="adminLogContainer" style="padding:16px 20px;font-family:var(--mono);font-size:12px;max-height:500px;overflow-y:auto;line-height:1.8">
+            <span style="color:#484f58">Sin logs aún...</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /admin-content -->
+  </div><!-- /admin-body -->
+</div>
+
+<!-- MODAL CONFIRMACIÓN ENVÍO -->
+<div class="modal-bg" id="sendModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>📲 Confirmar envío por WhatsApp</h3>
+      <p id="sm_sub">Comprobante para cliente</p>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--green-l);border:1px solid var(--green-m);border-radius:var(--r);margin-bottom:16px">
+        <span style="font-size:24px">📱</span>
+        <div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green)" id="sm_phone">+51 000 000 000</div>
+          <div style="font-size:12px;color:var(--gray-600)" id="sm_clientName">Cliente</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--blue-l);border:1px solid #bfdbfe;border-radius:var(--r);margin-bottom:14px;font-size:13px;color:var(--blue)">
+        📄 <span id="sm_pdf">Comprobante.pdf adjunto</span>
+      </div>
+      <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--r);padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--gray-800);max-height:160px;overflow-y:auto" id="sm_msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-wsp" onclick="confirmSend()">📲 Enviar ahora</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  CONFIG (persiste en localStorage)
+// ══════════════════════════════════════════
+const ADMIN_PASS_DEFAULT = 'admin1234';
+const CFG_KEY = 'possend_cfg';
+const SENT_KEY = 'possend_sent';
+const LOG_KEY  = 'possend_logs';
+
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); } catch{ return {}; }
+}
+function saveCfg(patch) {
+  const cfg = { ...loadCfg(), ...patch };
+  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+  return cfg;
+}
+
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+const S = {
+  vendorUid: null,
+  vendorName: '',
+  orders: [],
+  filtered: [],
+  sent: new Set(JSON.parse(localStorage.getItem(SENT_KEY) || '[]')),
+  pending: null,      // orden esperando confirmación
+  syncInterval: null,
+  countdown: 30,
+};
+
+const COLORS = ['#16a34a','#2563eb','#d97706','#dc2626','#7c3aed','#0891b2','#be185d'];
+function vendorColor(n){ if(!n)return'#6b7280'; let h=0; for(let c of n) h=(h*31+c.charCodeAt(0))%COLORS.length; return COLORS[h]; }
+function initials(s){ return String(s||'').split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''); }
+function fmt(n){ return Number(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+function esc(s){ return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function timeAgo(dt){
+  if(!dt) return '—';
+  const d=new Date(dt), diff=(new Date()-d)/1000;
+  if(diff<60) return `hace ${Math.floor(diff)}s`;
+  if(diff<3600) return `hace ${Math.floor(diff/60)} min`;
+  return d.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+}
+
+// ══════════════════════════════════════════
+//  VIEW ROUTER
+// ══════════════════════════════════════════
+function showView(name) {
+  document.getElementById('viewLogin').style.display = 'none';
+  document.getElementById('viewDash').style.display  = 'none';
+  document.getElementById('viewAdmin').style.display = 'none';
+  document.getElementById('adminGate').style.display = 'none';
+  if(name==='login') document.getElementById('viewLogin').style.display = 'flex';
+  if(name==='dash')  document.getElementById('viewDash').style.display  = 'flex';
+  if(name==='admin') document.getElementById('viewAdmin').style.display = 'block';
+  if(name==='gate')  document.getElementById('adminGate').style.display = 'flex';
+}
+
+// ══════════════════════════════════════════
+//  LOGIN VENDEDOR
+// ══════════════════════════════════════════
+async function doLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  document.getElementById('loginErr').style.display = 'none';
+  if(!user || !pass){ toast('Ingresa tu correo y contraseña','err'); return; }
+
+  const btn = document.getElementById('btnLogin');
+  btn.textContent = 'Verificando...'; btn.disabled = true;
+
+  let uid = null;
+  let vendorDisplayName = user.split('@')[0];
+
+  try {
+    const r = await fetch('/api/auth', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username:user, password:pass })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error||'Credenciales incorrectas');
+    uid = d.uid;
+    vendorDisplayName = d.name || vendorDisplayName;
+    // Guardar empresa del usuario si no hay config previa
+    if(d.company_id && !loadCfg().company_id) {
+      saveCfg({ company_id:d.company_id, company_name:d.company_name });
+    }
+  } catch(e) {
+    uid = null;
+    console.warn('[auth]', e.message);
+    document.getElementById('loginErr').querySelector ? null : null;
+  }
+
+  btn.textContent = 'Ingresar →'; btn.disabled = false;
+
+  if(!uid) {
+    document.getElementById('loginErr').style.display = 'block';
+    return;
+  }
+
+  S.vendorUid   = uid;
+  S.vendorName  = vendorDisplayName;
+  S._vendorPass = pass; // Needed for API calls (never stored in localStorage)
+  initDash();
+  showView('dash');
+  await syncNow();
+  startAutoSync();
+}
+
+function doLogout() {
+  clearInterval(S.syncInterval);
+  clearInterval(S._tick);
+  S.orders = [];
+  showView('login');
+  document.getElementById('loginPass').value = '';
+}
+
+// ══════════════════════════════════════════
+//  DASHBOARD INIT
+// ══════════════════════════════════════════
+function initDash() {
+  const cfg = loadCfg();
+  // Vendor chip
+  const col = vendorColor(S.vendorName);
+  document.getElementById('vendorAv').textContent  = initials(S.vendorName);
+  document.getElementById('vendorAv').style.background = col;
+  document.getElementById('vendorName').textContent = S.vendorName;
+  // Context
+  document.getElementById('ctx_company').textContent = cfg.company_name || 'Empresa';
+  document.getElementById('ctx_pos').textContent = cfg.pos_list?.[0]?.name || 'POS';
+}
+
+// ══════════════════════════════════════════
+//  SYNC
+// ══════════════════════════════════════════
+function startAutoSync() {
+  clearInterval(S.syncInterval);
+  clearInterval(S._tick);
+  S.countdown = 30;
+  S.syncInterval = setInterval(syncNow, 30000);
+  S._tick = setInterval(() => {
+    S.countdown = Math.max(0, S.countdown - 1);
+    const pct = ((30 - S.countdown) / 30 * 100);
+    document.getElementById('syncFill').style.width = pct + '%';
+    document.getElementById('syncLbl').textContent = S.countdown + 's';
+    if(S.countdown === 0) { S.countdown = 30; document.getElementById('syncFill').style.width = '0%'; }
+  }, 1000);
+}
+
+async function syncNow() {
+  S.countdown = 30;
+  document.getElementById('ct_sub').textContent = 'Actualizando...';
+  const cfg = loadCfg();
+  let orders = [];
+
+  try {
+    const cfg2 = loadCfg();
+    const r = await fetch('/api/orders', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        uid: S.vendorUid,
+        password: S._vendorPass,
+        vendor_name: S.vendorName,
+        company_id: cfg2.company_id,
+        pos_ids: (cfg2.pos_list||[]).map(p=>p.id),
+      })
+    });
+    orders = await r.json();
+    if(!Array.isArray(orders)) orders = demoOrders();
+  } catch(e) {
+    console.warn('[orders]', e);
+    orders = demoOrders();
+  }
+
+  // Detectar nuevas
+  const prevIds = new Set(S.orders.map(o=>String(o.order_id)));
+  const newIds  = new Set(orders.filter(o=>!prevIds.has(String(o.order_id))).map(o=>String(o.order_id)));
+  if(newIds.size > 0 && S.orders.length > 0) toast(`🆕 ${newIds.size} nueva(s) venta(s)`, 'ok');
+
+  S.orders  = orders;
+  S._newIds = newIds;
+  applyFilter();
+  addLog(`Sync: ${orders.length} ventas cargadas`, 'ok');
+}
+
+// ══════════════════════════════════════════
+//  RENDER ORDERS TABLE
+// ══════════════════════════════════════════
+function applyFilter() {
+  const f = document.getElementById('filterSel')?.value || 'all';
+  let rows = [...S.orders];
+  if(f === 'pending')  rows = rows.filter(o => !S.sent.has(String(o.order_id)));
+  if(f === 'sent')     rows = rows.filter(o =>  S.sent.has(String(o.order_id)));
+  if(f === 'no_phone') rows = rows.filter(o => !o.client?.phone_whatsapp);
+  S.filtered = rows;
+  renderTable(rows);
+  updateStats();
+  const now = new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById('ct_sub').textContent = `${rows.length} ventas · última sync ${now}`;
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('ordersBody');
+  if(!rows.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6"><span class="empty-icon">🔍</span><p>No hay ventas con este filtro</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(o => {
+    const id      = o.order_id;
+    const isSent  = S.sent.has(String(id));
+    const isNew   = S._newIds?.has(String(id));
+    const hasPhone= !!o.client?.phone_whatsapp;
+    const prods   = (o.lines||[]).slice(0,2).map(l=>`${l.name} ×${l.qty}`).join(', ') + ((o.lines||[]).length>2?'…':'');
+    let btn = '';
+    if(isSent)
+      btn = `<button class="tbtn-send sent" disabled>✓ Enviado</button>`;
+    else if(!hasPhone)
+      btn = `<button class="tbtn-send no-phone" disabled title="Sin teléfono">⚠ Sin tel.</button>`;
+    else
+      btn = `<button class="tbtn-send ready" onclick="openSendModal('${id}')">📲 Enviar WSP</button>`;
+
+    return `<tr class="${isNew?'is-new':''} ${isSent?'is-sent':''}">
+      <td>
+        <div class="order-num">${esc(o.order_number||o.name)} ${isNew?'<span class="new-tag">NUEVO</span>':''}</div>
+        <div class="order-time">${timeAgo(o.date_order)}</div>
+      </td>
+      <td>
+        <div class="client-name">${esc(o.client?.name||'Anónimo')}</div>
+        <div class="client-phone ${hasPhone?'':'warn'}">${hasPhone?'+'+o.client.phone_whatsapp:'⚠ Sin teléfono'}</div>
+      </td>
+      <td style="color:var(--gray-600);font-size:13px;max-width:200px">${esc(prods||'—')}</td>
+      <td>${payBadge(o.payment_state)}</td>
+      <td style="text-align:right">
+        <div class="amount-val">S/ ${fmt(o.total)}</div>
+        <div class="amount-cur">IGV incl.</div>
+      </td>
+      <td style="text-align:center">${btn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateStats() {
+  const orders = S.orders;
+  const pend   = orders.filter(o=>!S.sent.has(String(o.order_id))&&!!o.client?.phone_whatsapp).length;
+  const monto  = orders.reduce((a,o)=>a+(Number(o.total)||0),0);
+  document.getElementById('st_ventas').textContent   = orders.length;
+  document.getElementById('st_enviados').textContent = S.sent.size;
+  document.getElementById('st_pend').textContent     = pend;
+  document.getElementById('st_total').textContent    = 'S/ '+fmt(monto);
+}
+
+function payBadge(state) {
+  const m = { paid:'<span class="badge b-green">● Pagado</span>', not_paid:'<span class="badge b-amber">○ Pendiente</span>', invoiced:'<span class="badge b-blue">◎ Facturado</span>', reversed:'<span class="badge b-red">↩ Anulado</span>' };
+  return m[state] || `<span class="badge b-gray">${state||'—'}</span>`;
+}
+
+// ══════════════════════════════════════════
+//  SEND MODAL
+// ══════════════════════════════════════════
+function openSendModal(orderId) {
+  const o = S.orders.find(x=>String(x.order_id)===String(orderId));
+  if(!o) return;
+  S.pending = o;
+  const items = (o.lines||[]).map(l=>`  • ${l.name} ×${l.qty}  S/${fmt(l.price*l.qty)}`).join('\n');
+  const msg = buildMsg(o, items);
+  document.getElementById('sm_sub').textContent    = `Para: ${o.client?.name||'cliente'}`;
+  document.getElementById('sm_phone').textContent  = '+' + o.client.phone_whatsapp;
+  document.getElementById('sm_clientName').textContent = o.client.name||'—';
+  document.getElementById('sm_pdf').textContent    = `${o.order_number||o.name}.pdf adjunto`;
+  document.getElementById('sm_msg').textContent    = msg;
+  document.getElementById('sendModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('sendModal').classList.remove('open');
+  S.pending = null;
+}
+
+async function confirmSend() {
+  if(!S.pending) return;
+  closeModal();
+  await doSend(S.pending);
+}
+
+async function doSend(o) {
+  const id  = String(o.order_id);
+  const btn = document.querySelector(`[onclick="openSendModal('${id}')"]`);
+  if(btn){ btn.className='tbtn-send sending'; btn.textContent='⏳ Enviando...'; btn.disabled=true; btn.onclick=null; }
+
+  const cfg = loadCfg();
+  const items = (o.lines||[]).map(l=>`  • ${l.name} ×${l.qty}  S/${fmt(l.price*l.qty)}`).join('\n');
+  const payload = {
+    action:'send_whatsapp',
+    order_id: o.order_id, order_number: o.order_number||o.name,
+    client_name: o.client?.name, client_phone: o.client?.phone_whatsapp,
+    total: o.total, currency:'PEN',
+    vendor_name: S.vendorName,
+    company_id: cfg.company_id,
+    message: buildMsg(o, items)
+  };
+
+  try {
+    const r = await fetch('/api/send', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ...payload, uid: S.vendorUid, password: S._vendorPass })
+    });
+    if(!r.ok) { const d=await r.json().catch(()=>{}); throw new Error(d?.error||'HTTP '+r.status); }
+    S.sent.add(id);
+    localStorage.setItem(SENT_KEY, JSON.stringify([...S.sent]));
+    if(btn){ btn.className='tbtn-send sent'; btn.textContent='✓ Enviado'; }
+    toast(`✅ Comprobante enviado a ${o.client?.name}`, 'ok');
+    addLog(`Enviado: ${o.order_number||o.name} → +${o.client?.phone_whatsapp}`, 'ok');
+    updateStats();
+  } catch(e) {
+    if(btn){ btn.className='tbtn-send ready'; btn.textContent='📲 Reintentar'; btn.disabled=false; btn.onclick=()=>openSendModal(id); }
+    toast('Error al enviar: '+e.message, 'err');
+    addLog(`Error enviando ${o.order_number}: ${e.message}`, 'err');
+  }
+}
+
+function buildMsg(o, items) {
+  const cfg = loadCfg();
+  return `📄 *Comprobante de Pago*\n\nEstimado/a *${o.client?.name||'cliente'}*,\n\nAdjuntamos su comprobante de compra:\n\n*${o.order_number||o.name}*\n${items||''}\n\n*Total: S/ ${fmt(o.total)}*\n\nGracias por su preferencia 🙏\n_${cfg.company_name||'Tu empresa'}_`;
+}
+
+// ══════════════════════════════════════════
+//  ADMIN PANEL
+// ══════════════════════════════════════════
+function showAdminGate() { showView('gate'); document.getElementById('gatePass').value=''; document.getElementById('gateErr').style.display='none'; }
+
+function checkGate() {
+  const pass = document.getElementById('gatePass').value;
+  const cfg  = loadCfg();
+  const stored = cfg.admin_pass || ADMIN_PASS_DEFAULT;
+  if(pass === stored) { showView('admin'); loadAdminCfg(); }
+  else { document.getElementById('gateErr').style.display='block'; }
+}
+
+function loadAdminCfg() {
+  const cfg = loadCfg();
+  ['url','db','user','key'].forEach(k => { const el=document.getElementById('cfg_'+k); if(el&&cfg['odoo_'+k]) el.value=cfg['odoo_'+k]; });
+  if(cfg.n8n_url) document.getElementById('cfg_n8n').value = cfg.n8n_url;
+  if(cfg.n8n_secret) document.getElementById('cfg_n8n_secret').value = cfg.n8n_secret;
+  if(cfg.company_id) document.getElementById('cfg_company_id').value = cfg.company_id;
+  if(cfg.company_name) document.getElementById('cfg_company_name').value = cfg.company_name;
+  renderPOSTable(cfg.pos_list||[]);
+  renderAdminLogs();
+}
+
+function adminNav(sec, el) {
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('sec_'+sec).classList.add('active');
+}
+
+function saveOdooConfig() {
+  saveCfg({ odoo_url:v('cfg_url'), odoo_db:v('cfg_db'), odoo_user:v('cfg_user'), odoo_key:v('cfg_key') });
+  toast('✅ Configuración Odoo guardada','ok');
+}
+
+async function testOdoo() {
+  const st = document.getElementById('odooConnStatus');
+  st.className='conn-status cs-wait'; st.textContent='◌ Probando...';
+  const cfg = loadCfg();
+  if(!cfg.n8n_url){ st.className='conn-status cs-err'; st.textContent='✗ Configura el webhook primero'; return; }
+  try {
+    const r = await fetch('/api/test', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if(d.odoo_ok) {
+      st.className='conn-status cs-ok'; st.textContent='✓ Conectado — Odoo '+( d.odoo_version||'');
+      document.getElementById('connTable').innerHTML = `
+        <tr><td style="color:#8b949e">ODOO_URL</td><td style="font-family:var(--mono);font-size:12px;color:#e2e8f0">${esc(d.odoo_url||'—')}</td><td><span class="online-dot dot-green"></span>OK</td></tr>
+        <tr><td style="color:#8b949e">ODOO_DB</td><td style="font-family:var(--mono);font-size:12px;color:#e2e8f0">${esc(d.odoo_db||'—')}</td><td><span class="online-dot dot-green"></span>OK</td></tr>
+        <tr><td style="color:#8b949e">Versión Odoo</td><td style="font-family:var(--mono);font-size:12px;color:#e2e8f0">${d.odoo_version||'—'}</td><td><span class="online-dot dot-green"></span>OK</td></tr>`;
+    } else { throw new Error(JSON.stringify(d)); }
+  } catch(e) { st.className='conn-status cs-err'; st.textContent='✗ '+e.message; }
+}
+
+function saveWebhookConfig() {
+  saveCfg({ n8n_url:v('cfg_n8n'), n8n_secret:v('cfg_n8n_secret') });
+  toast('✅ Webhook guardado','ok');
+}
+
+async function testWebhook() {
+  const st = document.getElementById('webhookStatus');
+  st.className='conn-status cs-wait'; st.textContent='◌ Verificando...';
+  try {
+    const r = await fetch('/api/test', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if(d.odoo_ok) {
+      st.className='conn-status cs-ok';
+      st.textContent='✓ Servidor OK — Odoo ' + (d.odoo_version||'');
+    } else {
+      st.className='conn-status cs-err';
+      st.textContent='✗ ' + (d.n8n_webhook.includes('falta') ? 'Falta N8N_WEBHOOK_URL' : 'Falta ODOO_URL/DB');
+    }
+  } catch(e){ st.className='conn-status cs-err'; st.textContent='✗ '+e.message; }
+}
+
+// POS list
+let _posList = [];
+function renderPOSTable(list) {
+  _posList = [...list];
+  const tbody = document.getElementById('posBody');
+  if(!list.length){ tbody.innerHTML=`<tr><td colspan="4" style="color:#484f58;font-family:var(--mono);font-size:12px;padding:16px">Sin POS configurados</td></tr>`; return; }
+  tbody.innerHTML = list.map((p,i)=>`
+    <tr>
+      <td style="font-family:var(--mono);font-size:12px;color:#58a6ff">${p.id}</td>
+      <td style="color:#e2e8f0">${esc(p.name)}</td>
+      <td><span class="online-dot dot-green"></span><span style="font-size:12px;color:#2ea043">Activo</span></td>
+      <td><button class="admin-btn abn-danger" onclick="removePOS(${i})">✕</button></td>
+    </tr>`).join('');
+}
+function addPOS() {
+  const id=parseInt(document.getElementById('newPosId').value), name=document.getElementById('newPosName').value.trim();
+  if(!id||!name){ toast('ID y nombre son requeridos','err'); return; }
+  _posList.push({id,name});
+  renderPOSTable(_posList);
+  document.getElementById('newPosId').value=''; document.getElementById('newPosName').value='';
+}
+function removePOS(i) { _posList.splice(i,1); renderPOSTable(_posList); }
+function saveEmpresasConfig() {
+  saveCfg({ company_id:parseInt(v('cfg_company_id')), company_name:v('cfg_company_name'), pos_list:_posList });
+  toast('✅ Empresas y POS guardados','ok');
+}
+
+function changeAdminPass() {
+  const p1=v('cfg_pass1'), p2=v('cfg_pass2');
+  if(p1.length<8){ toast('Mínimo 8 caracteres','err'); return; }
+  if(p1!==p2){ toast('Las contraseñas no coinciden','err'); return; }
+  saveCfg({ admin_pass:p1 });
+  toast('✅ Contraseña actualizada','ok');
+  document.getElementById('cfg_pass1').value=''; document.getElementById('cfg_pass2').value='';
+}
+
+// ══════════════════════════════════════════
+//  LOGS
+// ══════════════════════════════════════════
+function addLog(msg, type='dim') {
+  const logs = JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
+  const ts = new Date().toISOString();
+  logs.unshift({ts,msg,type});
+  if(logs.length>100) logs.pop();
+  localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+}
+function renderAdminLogs() {
+  const logs = JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
+  const con  = document.getElementById('adminLogContainer');
+  if(!logs.length){ con.innerHTML='<span style="color:#484f58">Sin logs aún...</span>'; return; }
+  const colors = {ok:'#2ea043',err:'#f85149',inf:'#f79600',dim:'#484f58'};
+  con.innerHTML = logs.map(l=>`<div style="color:${colors[l.type]||'#484f58'}"><span style="color:#484f58;margin-right:8px">${new Date(l.ts).toLocaleTimeString('es-PE')}</span>${esc(l.msg)}</div>`).join('');
+}
+function clearLogs() { localStorage.removeItem(LOG_KEY); renderAdminLogs(); toast('Logs eliminados','inf'); }
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function v(id){ return document.getElementById(id)?.value||''; }
+
+let _tt;
+function toast(msg,type='ok'){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='show '+type;
+  clearTimeout(_tt); _tt=setTimeout(()=>el.className='',3500);
+}
+
+document.getElementById('sendModal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+document.getElementById('loginUser').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('loginPass').focus();});
+
+// ══════════════════════════════════════════
+//  DEMO DATA
+// ══════════════════════════════════════════
+function demoOrders() {
+  const clients=[
+    {name:'Comercial Norte SAC',  phone:'51987654321'},
+    {name:'Pedro Mamani',         phone:'51912345678'},
+    {name:'Inversiones Lima EIRL',phone:''},
+    {name:'Ana Torres',           phone:'51955443322'},
+    {name:'Tech Perú SRL',        phone:'51944332211'},
+    {name:'Rosa Quispe',          phone:''},
+  ];
+  const prods=[
+    [{name:'Laptop HP 15"',qty:1,price:2800},{name:'Mouse USB',qty:2,price:45}],
+    [{name:'Impresora Canon',qty:1,price:650},{name:'Tóner',qty:3,price:180}],
+    [{name:'Monitor 24"',qty:2,price:890}],
+    [{name:'Teclado mecánico',qty:1,price:320},{name:'Auriculares',qty:1,price:280}],
+    [{name:'Silla ergonómica',qty:1,price:1200}],
+    [{name:'Webcam HD',qty:2,price:180},{name:'Hub USB',qty:1,price:85}],
+  ];
+  const states=['paid','not_paid','paid','not_paid','paid','not_paid'];
+  const types=['out_invoice','out_receipt','out_invoice','out_invoice','out_receipt','out_receipt'];
+  return Array.from({length:8},(_,i)=>{
+    const c=clients[i%clients.length], lines=prods[i%prods.length];
+    const total=lines.reduce((a,l)=>a+l.price*l.qty,0);
+    const d=new Date(); d.setMinutes(d.getMinutes()-Math.floor(Math.random()*240));
+    return {
+      order_id:3000+i, name:`Orden #${3000+i}`,
+      order_number:`${types[i%types.length]==='out_invoice'?'F001':'B001'}-${String(i+1).padStart(5,'0')}`,
+      date_order:d.toISOString(),
+      payment_state:states[i%states.length],
+      total, lines,
+      client:{ name:c.name, phone_whatsapp:c.phone },
+      vendor:{ name:S.vendorName, uid:S.vendorUid }
+    };
+  });
+}
+</script>
+</body>
+</html>

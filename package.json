@@ -1,0 +1,15 @@
+{
+  "name": "possend",
+  "version": "1.0.0",
+  "description": "Envío de comprobantes Odoo por WhatsApp desde el punto de venta",
+  "private": true,
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "xmlrpc": "^1.3.2"
+  },
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
