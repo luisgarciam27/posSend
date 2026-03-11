@@ -1283,12 +1283,16 @@ async function doSend(o) {
   const items = (o.lines||[]).map(l=>`  • ${l.name} ×${l.qty}  S/${fmt(l.price*l.qty)}`).join('\n');
   const payload = {
     action:'send_whatsapp',
-    order_id: o.order_id, order_number: o.order_number||o.name,
-    client_name: o.client?.name, client_phone: o.client?.phone_whatsapp,
-    total: o.total, currency:'PEN',
-    vendor_name: S.vendorName,
-    company_id: cfg.company_id,
-    message: buildMsg(o, items)
+    order_id:     o.order_id,
+    order_number: o.order_number || o.name,
+    invoice_id:   o.invoice_id   || null,   // ← FIX: necesario para descargar el PDF de la factura
+    client_name:  o.client?.name,
+    client_phone: o.client?.phone_whatsapp,
+    total:        o.total,
+    currency:     'PEN',
+    vendor_name:  S.vendorName,
+    company_id:   cfg.company_id,
+    message:      buildMsg(o, items)
   };
 
   try {
