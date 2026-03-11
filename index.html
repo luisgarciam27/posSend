@@ -1027,6 +1027,7 @@ async function doLogin() {
   S._pendingUid  = uid;
   S._pendingName = vendorDisplayName;
   S._vendorPass  = pass;
+  S._vendorUser  = user; // ← guardar username para descarga HTTP de PDF
 
   // ¿Hay múltiples empresas configuradas?
   const cfg = loadCfg();
@@ -1209,7 +1210,7 @@ function renderTable(rows) {
     else if(!hasPhone)
       btn = `<button class="tbtn-send no-phone" disabled title="Sin teléfono">⚠ Sin tel.</button>`;
     else
-      btn = `<button class="tbtn-send ready" data-orderid="${id}" onclick="openSendModal('${id}')">📲 Enviar WSP</button>`;
+      btn = `<button class="tbtn-send ready" onclick="openSendModal('${id}')">📲 Enviar WSP</button>`;
 
     return `<tr class="${isNew?'is-new':''} ${isSent?'is-sent':''}">
       <td>
@@ -1270,35 +1271,32 @@ function closeModal() {
 
 async function confirmSend() {
   if(!S.pending) return;
-  const order = S.pending;  // guardar referencia ANTES de cerrar modal
+  const order = S.pending;
   closeModal();
   await doSend(order);
 }
 
 async function doSend(o) {
-  const id = String(o.order_id);
+  const id  = String(o.order_id);
+  const btn = document.querySelector(`[data-orderid="${id}"]`) || document.querySelector(`[onclick="openSendModal('${id}')"]`);
+  if(btn){ btn.className='tbtn-send sending'; btn.textContent='⏳ Enviando...'; btn.disabled=true; btn.onclick=null; }
 
-  // FIX: buscar botón por data-orderid (más robusto que by onclick string)
-  const btn = document.querySelector(`[data-orderid="${id}"]`);
-  if(btn){ btn.className='tbtn-send sending'; btn.textContent='⏳ Enviando...'; btn.disabled=true; }
-
-  // FIX: validar que tenemos uid y password antes de llamar
   if(!S.vendorUid || !S._vendorPass) {
     toast('Sesión expirada — vuelve a iniciar sesión', 'err');
     if(btn){ btn.className='tbtn-send ready'; btn.textContent='📲 Reintentar'; btn.disabled=false; }
     return;
   }
 
-  const cfg   = loadCfg();
+  const cfg = loadCfg();
   const items = (o.lines||[]).map(l=>`  • ${l.name} ×${l.qty}  S/${fmt(l.price*l.qty)}`).join('\n');
-
   const payload = {
     uid:          S.vendorUid,
     password:     S._vendorPass,
+    username:     S._vendorUser,
     action:       'send_whatsapp',
     order_id:     o.order_id,
     order_number: o.order_number || o.name,
-    invoice_id:   o.invoice_id   || null,   // ← clave para descargar PDF de factura
+    invoice_id:   o.invoice_id   || null,
     client_name:  o.client?.name  || 'Cliente',
     client_phone: o.client?.phone_whatsapp || '',
     total:        o.total,
@@ -1314,6 +1312,7 @@ async function doSend(o) {
     client_phone: payload.client_phone,
     uid:          payload.uid,
     hasPass:      !!payload.password,
+    hasUser:      !!payload.username,
   });
 
   try {
@@ -1322,33 +1321,20 @@ async function doSend(o) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     });
-
     const responseText = await r.text();
     console.log('[doSend] respuesta status:', r.status, 'body:', responseText);
-
-    if(!r.ok) {
-      let errMsg = 'HTTP ' + r.status;
-      try { errMsg = JSON.parse(responseText)?.error || errMsg; } catch {}
-      throw new Error(errMsg);
-    }
-
-    // Éxito
+    if(!r.ok) { let e='HTTP '+r.status; try{e=JSON.parse(responseText)?.error||e;}catch{} throw new Error(e); }
     S.sent.add(id);
     localStorage.setItem(SENT_KEY, JSON.stringify([...S.sent]));
     if(btn){ btn.className='tbtn-send sent'; btn.textContent='✓ Enviado'; btn.disabled=true; }
-    toast(`✅ Comprobante enviado a ${o.client?.name || 'cliente'}`, 'ok');
+    toast(`✅ Comprobante enviado a ${o.client?.name}`, 'ok');
     addLog(`Enviado: ${o.order_number||o.name} → +${o.client?.phone_whatsapp}`, 'ok');
     updateStats();
-
   } catch(e) {
     console.error('[doSend] error:', e.message);
-    if(btn){
-      btn.className='tbtn-send ready';
-      btn.textContent='📲 Reintentar';
-      btn.disabled=false;
-    }
-    toast('❌ Error al enviar: ' + e.message, 'err');
-    addLog(`Error enviando ${o.order_number||o.name}: ${e.message}`, 'err');
+    if(btn){ btn.className='tbtn-send ready'; btn.textContent='📲 Reintentar'; btn.disabled=false; btn.onclick=()=>openSendModal(id); }
+    toast('Error al enviar: '+e.message, 'err');
+    addLog(`Error enviando ${o.order_number}: ${e.message}`, 'err');
   }
 }
 
