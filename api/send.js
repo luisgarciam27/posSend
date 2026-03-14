@@ -1,22 +1,54 @@
 // api/send.js
 // POST /api/send
-// Para Odoo 14 + l10n_pe_edi: descarga el PDF via HTTP session (no XML-RPC)
-// porque render_qweb_pdf está bloqueado por el proceso de firma SUNAT.
+// Estrategia para boletas/facturas electrónicas Perú (l10n_pe_edi):
+//
+// 1. ir.attachment via XML-RPC  ← PRIMARIO: Odoo guarda el PDF firmado como adjunto
+// 2. HTTP session (report)       ← FALLBACK 1: render on-the-fly
+// 3. POS receipt via HTTP        ← FALLBACK 2: si no hay factura vinculada
 
-const { cors, readBody } = require('./_odoo');
+const { execute, cors, readBody } = require('./_odoo');
 
 let fetchFn;
 try { fetchFn = globalThis.fetch ?? require('node-fetch'); }
 catch { fetchFn = require('node-fetch'); }
 
-// ── Descarga PDF de factura via HTTP (Odoo 14 + l10n_pe_edi) ───────────────
-// Odoo expone /web/content/?model=account.move&id=X&field=invoice_pdf_report_file
-// o /report/pdf/account.report_invoice_with_payments/X
-// Ambos requieren autenticación via cookie de sesión.
-async function downloadInvoicePDFviaHTTP(odooUrl, db, username, password, invoiceId) {
+// ── 1. PDF via ir.attachment (XML-RPC) ─────────────────────────────────────
+// Para documentos l10n_pe_edi, Odoo almacena el PDF firmado como attachment
+// con mimetype application/pdf ligado al account.move.
+// No requiere sesión HTTP — funciona con uid + password/api_key.
+async function downloadPDFviaAttachment(url, db, uid, password, invoiceId) {
+  console.log('[send] Buscando PDF en ir.attachment para invoice_id:', invoiceId);
+
+  const attachments = await execute(
+    url, db, uid, password,
+    'ir.attachment', 'search_read',
+    [[
+      ['res_model', '=', 'account.move'],
+      ['res_id',    '=', invoiceId],
+      ['mimetype',  '=', 'application/pdf'],
+    ]],
+    { fields: ['id', 'name', 'datas', 'store_fname'], order: 'id desc', limit: 5 }
+  );
+
+  console.log('[send] Adjuntos PDF encontrados:', attachments.length, attachments.map(a => a.name));
+
+  // Preferir el que tiene nombre de comprobante reconocible
+  const best = attachments.find(a => /invoice|boleta|factura|BBB|FFF|B0|F0/i.test(a.name))
+            || attachments[0];
+
+  if (!best || !best.datas) {
+    throw new Error(`No se encontró PDF adjunto para invoice_id=${invoiceId}`);
+  }
+
+  const buffer = Buffer.from(best.datas, 'base64');
+  console.log(`[send] ✅ PDF adjunto OK: ${best.name} — ${buffer.length} bytes`);
+  return { buffer, filename: best.name.endsWith('.pdf') ? best.name : best.name + '.pdf' };
+}
+
+// ── 2. PDF via sesión HTTP (report endpoint) ───────────────────────────────
+async function downloadPDFviaHTTP(odooUrl, db, username, password, invoiceId) {
   const base = odooUrl.replace(/\/$/, '');
 
-  // 1. Obtener sesión (cookie) autenticada
   const loginRes = await fetchFn(`${base}/web/session/authenticate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -28,50 +60,36 @@ async function downloadInvoicePDFviaHTTP(odooUrl, db, username, password, invoic
 
   const setCookie = loginRes.headers.get('set-cookie') || '';
   const sessionMatch = setCookie.match(/session_id=([^;]+)/);
-  if (!sessionMatch) throw new Error('No se pudo obtener sesión Odoo');
-  const sessionId = sessionMatch[1];
-  const cookieHeader = `session_id=${sessionId}`;
+  if (!sessionMatch) throw new Error('No se pudo obtener sesión Odoo para HTTP');
+  const cookieHeader = `session_id=${sessionMatch[1]}`;
 
-  // 2. Intentar descargar PDF con diferentes endpoints de Odoo 14
   const endpoints = [
     `${base}/report/pdf/account.report_invoice_with_payments/${invoiceId}`,
     `${base}/report/pdf/account.report_invoice/${invoiceId}`,
-    `${base}/web/content/?model=account.move&id=${invoiceId}&field=invoice_pdf_report_file&filename_field=invoice_pdf_report_filename&download=true`,
+    `${base}/web/content/?model=account.move&id=${invoiceId}&field=invoice_pdf_report_file&download=true`,
   ];
 
   for (const endpoint of endpoints) {
     try {
-      console.log('[send] Intentando HTTP PDF:', endpoint);
+      console.log('[send] HTTP PDF:', endpoint);
       const pdfRes = await fetchFn(endpoint, {
         headers: { 'Cookie': cookieHeader },
         redirect: 'follow',
       });
-
-      if (!pdfRes.ok) {
-        console.warn(`[send] HTTP ${pdfRes.status} en: ${endpoint}`);
-        continue;
-      }
-
-      const contentType = pdfRes.headers.get('content-type') || '';
-      if (!contentType.includes('pdf')) {
-        console.warn(`[send] Content-Type no es PDF: ${contentType} en: ${endpoint}`);
-        continue;
-      }
-
-      const arrayBuffer = await pdfRes.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      console.log(`[send] ✅ PDF HTTP OK: ${buffer.length} bytes desde ${endpoint}`);
-      return buffer;
-
+      if (!pdfRes.ok) { console.warn(`[send] HTTP ${pdfRes.status}`); continue; }
+      const ct = pdfRes.headers.get('content-type') || '';
+      if (!ct.includes('pdf')) { console.warn(`[send] No es PDF: ${ct}`); continue; }
+      const buffer = Buffer.from(await pdfRes.arrayBuffer());
+      console.log(`[send] ✅ HTTP PDF OK: ${buffer.length} bytes`);
+      return { buffer, filename: `Comprobante_${invoiceId}.pdf` };
     } catch (e) {
-      console.warn(`[send] Error en endpoint ${endpoint}:`, e.message);
+      console.warn(`[send] HTTP endpoint falló: ${e.message}`);
     }
   }
-
-  throw new Error('No se pudo descargar PDF por HTTP de Odoo 14');
+  throw new Error('Todos los endpoints HTTP fallaron');
 }
 
-// ── Fallback: PDF recibo POS via HTTP ───────────────────────────────────────
+// ── 3. Recibo POS via HTTP (fallback sin factura) ──────────────────────────
 async function downloadPOSReceiptViaHTTP(odooUrl, db, username, password, orderId) {
   const base = odooUrl.replace(/\/$/, '');
 
@@ -86,34 +104,34 @@ async function downloadPOSReceiptViaHTTP(odooUrl, db, username, password, orderI
 
   const setCookie = loginRes.headers.get('set-cookie') || '';
   const sessionMatch = setCookie.match(/session_id=([^;]+)/);
-  if (!sessionMatch) throw new Error('No se pudo obtener sesión Odoo');
+  if (!sessionMatch) return null;
   const cookieHeader = `session_id=${sessionMatch[1]}`;
 
   const endpoints = [
-    `${odooUrl.replace(/\/$/, '')}/report/pdf/point_of_sale.report_pos_order/${orderId}`,
-    `${odooUrl.replace(/\/$/, '')}/report/pdf/point_of_sale.receipt_report/${orderId}`,
+    `${base}/report/pdf/point_of_sale.report_pos_order/${orderId}`,
+    `${base}/report/pdf/point_of_sale.receipt_report/${orderId}`,
   ];
 
   for (const endpoint of endpoints) {
     try {
-      console.log('[send] Intentando POS PDF HTTP:', endpoint);
       const pdfRes = await fetchFn(endpoint, {
         headers: { 'Cookie': cookieHeader },
         redirect: 'follow',
       });
       if (!pdfRes.ok) continue;
-      const contentType = pdfRes.headers.get('content-type') || '';
-      if (!contentType.includes('pdf')) continue;
+      const ct = pdfRes.headers.get('content-type') || '';
+      if (!ct.includes('pdf')) continue;
       const buffer = Buffer.from(await pdfRes.arrayBuffer());
-      console.log(`[send] ✅ POS PDF OK: ${buffer.length} bytes`);
-      return buffer;
+      console.log(`[send] ✅ POS receipt OK: ${buffer.length} bytes`);
+      return { buffer, filename: `Recibo_${orderId}.pdf` };
     } catch (e) {
-      console.warn(`[send] POS PDF error:`, e.message);
+      console.warn(`[send] POS receipt error: ${e.message}`);
     }
   }
   return null;
 }
 
+// ── Handler principal ──────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -121,11 +139,10 @@ module.exports = async (req, res) => {
 
   try {
     const {
-      uid, password,
+      uid, password, username,
       order_id, order_number, invoice_id,
       client_name, client_phone,
       total, currency, vendor_name, company_id, message,
-      username, // ← el frontend debe enviar también el username (email de login)
     } = await readBody(req);
 
     const url    = process.env.ODOO_URL;
@@ -138,38 +155,66 @@ module.exports = async (req, res) => {
     if (!client_phone)     return res.status(400).json({ error: 'Sin número de teléfono del cliente' });
     if (!uid || !password) return res.status(401).json({ error: 'uid y password requeridos' });
 
-    // El username puede venir del body o usamos un fallback con env var admin
     const odooUser = username || process.env.ODOO_ADMIN_USER;
-    if (!odooUser) {
-      console.warn('[send] No hay username para sesión HTTP — PDF puede fallar');
-    }
 
-    // ── 1. Descargar PDF via HTTP ────────────────────────────────────────
+    console.log('[send] Iniciando:', {
+      order_number, invoice_id, order_id,
+      hasUsername: !!odooUser,
+      phone: client_phone,
+    });
+
+    // ── Descargar PDF (3 estrategias en cascada) ──────────────────────────
     let pdfBuffer   = null;
     let pdfFilename = `${String(order_number || order_id).replace(/\//g, '-')}.pdf`;
+    let strategy    = 'none';
 
-    if (invoice_id && odooUser) {
+    // Estrategia 1: ir.attachment XML-RPC (más confiable para l10n_pe_edi)
+    if (invoice_id) {
       try {
-        pdfBuffer = await downloadInvoicePDFviaHTTP(url, db, odooUser, password, invoice_id);
+        const result = await downloadPDFviaAttachment(url, db, uid, password, invoice_id);
+        pdfBuffer   = result.buffer;
+        pdfFilename = result.filename;
+        strategy    = 'attachment_xmlrpc';
       } catch (e) {
-        console.warn('[send] PDF factura HTTP falló:', e.message);
+        console.warn('[send] ir.attachment falló:', e.message);
       }
     }
 
-    // Fallback: recibo POS
+    // Estrategia 2: HTTP report endpoint
+    if (!pdfBuffer && invoice_id && odooUser) {
+      try {
+        const result = await downloadPDFviaHTTP(url, db, odooUser, password, invoice_id);
+        pdfBuffer   = result.buffer;
+        pdfFilename = result.filename;
+        strategy    = 'http_report';
+      } catch (e) {
+        console.warn('[send] HTTP report falló:', e.message);
+      }
+    }
+
+    // Estrategia 3: Recibo POS (sin factura vinculada)
     if (!pdfBuffer && order_id && odooUser) {
       try {
-        pdfBuffer = await downloadPOSReceiptViaHTTP(url, db, odooUser, password, order_id);
-        if (pdfBuffer) pdfFilename = `Recibo_${String(order_number || order_id).replace(/\//g, '-')}.pdf`;
+        const result = await downloadPOSReceiptViaHTTP(url, db, odooUser, password, order_id);
+        if (result) {
+          pdfBuffer   = result.buffer;
+          pdfFilename = result.filename;
+          strategy    = 'pos_receipt';
+        }
       } catch (e) {
-        console.warn('[send] PDF POS HTTP falló:', e.message);
+        console.warn('[send] POS receipt falló:', e.message);
       }
     }
 
     const pdfBase64 = pdfBuffer ? pdfBuffer.toString('base64') : '';
-    if (!pdfBase64) console.warn('[send] ⚠️ Sin PDF — se enviará solo texto');
 
-    // ── 2. Payload para n8n ──────────────────────────────────────────────
+    if (!pdfBase64) {
+      console.warn('[send] ⚠️ Sin PDF — se enviará solo texto. invoice_id:', invoice_id);
+    } else {
+      console.log(`[send] PDF listo [${strategy}]: ${pdfFilename} — ${pdfBuffer.length} bytes`);
+    }
+
+    // ── Payload n8n ────────────────────────────────────────────────────────
     const payload = {
       action:       'send_whatsapp',
       order_number: order_number || String(order_id),
@@ -184,14 +229,7 @@ module.exports = async (req, res) => {
       pdf_filename: pdfBase64 ? pdfFilename : '',
     };
 
-    console.log('[send] → n8n:', {
-      phone:  payload.client_phone,
-      order:  payload.order_number,
-      hasPdf: !!pdfBase64,
-      bytes:  pdfBuffer?.length || 0,
-    });
-
-    // ── 3. POST a n8n ────────────────────────────────────────────────────
+    // ── POST a n8n ─────────────────────────────────────────────────────────
     const n8nRes = await fetchFn(n8nUrl, {
       method:  'POST',
       headers: {
@@ -202,7 +240,7 @@ module.exports = async (req, res) => {
     });
 
     const responseText = await n8nRes.text();
-    console.log('[send] n8n status:', n8nRes.status, '|', responseText.slice(0, 300));
+    console.log('[send] n8n status:', n8nRes.status, '|', responseText.slice(0, 200));
 
     if (!n8nRes.ok) throw new Error(`n8n respondió ${n8nRes.status}: ${responseText}`);
 
@@ -213,6 +251,7 @@ module.exports = async (req, res) => {
       ok:       true,
       pdf_sent: !!pdfBase64,
       pdf_size: pdfBuffer?.length || 0,
+      strategy,
       n8n:      n8nData,
     });
 
